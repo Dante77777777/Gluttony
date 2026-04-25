@@ -1,0 +1,33 @@
+project:
+  name: patchcore_mvtec
+  seed: 42
+  output_dir: outputs/patchcore_mvtec
+
+dataset:
+  root: data/mvtec_ad
+  category: bottle
+  image_size: 256
+  train_batch_size: 4
+  eval_batch_size: 4
+  num_workers: 0
+
+model:
+  name: patchcore
+  backbone: wide_resnet50_2
+  layers:
+    - layer2
+    - layer3
+  coreset_sampling_ratio: 0.01
+  num_neighbors: 9
+
+trainer:
+  accelerator: cpu
+  devices: 1
+  max_epochs: 1
+  enable_progress_bar: true
+
+export:
+  format: openvino
+  input_size:
+    - 256
+    - 256
