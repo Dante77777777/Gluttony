@@ -40,6 +40,10 @@ qt_add_executable(Gluttony
     ViewWidget/ViewWidget.h
     ViewWidget/ViewWidget.cpp
     ViewWidget/ViewWidgetUI.h
+    ViewWidget/GraphicsView.h
+    ViewWidget/GraphicsView.cpp
+    ViewWidget/ImageItem.h
+    ViewWidget/ImageItem.cpp
 )
 
 set(RESOURCE resources/resources.qrc)
