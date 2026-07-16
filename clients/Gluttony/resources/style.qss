@@ -8,6 +8,43 @@ QMainWindow {
     background: #f4f6f8;
 }
 
+/* Bottom status bar */
+QStatusBar {
+    background: #ffffff;
+    color: #374151;
+    border: none;
+    border-top: 1px solid #d7dde5;
+    min-height: 34px;
+    font-size: 12px;
+}
+
+QStatusBar::item {
+    border: none;
+}
+
+QStatusBar QLabel {
+    background: transparent;
+    color: #374151;
+    border: none;
+    padding: 0 4px;
+}
+
+QStatusBar QFrame#StatusBarSeparator {
+    background: #d7dde5;
+    border: none;
+    max-width: 1px;
+}
+
+QStatusBar QLabel#FooterNg {
+    color: #dc2626;
+    font-weight: 700;
+}
+
+QStatusBar QLabel#FooterOk {
+    color: #16a34a;
+    font-weight: 700;
+}
+
 /* Top toolbar */
 QToolBar {
     background: #ffffff;
@@ -180,8 +217,65 @@ QPlainTextEdit#LogPanel {
     font-size: 12px;
 }
 
+/* Log panel */
+QWidget#LogWidget {
+    background: #ffffff;
+    border: 1px solid #d7dde5;
+    border-radius: 8px;
+}
+
+QWidget#LogTitleBar {
+    background: transparent;
+    border: none;
+}
+
+QLabel#LogTitle {
+    color: #111827;
+    border: none;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+QPushButton#LogClearButton,
+QPushButton#LogSaveButton {
+    background: #ffffff;
+    color: #374151;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    min-height: 22px;
+    padding: 3px 9px;
+    font-weight: 600;
+}
+
+QPushButton#LogSaveButton {
+    min-width: 26px;
+    max-width: 26px;
+    padding: 3px;
+}
+
+QPushButton#LogClearButton:hover,
+QPushButton#LogSaveButton:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+}
+
+QPushButton#LogClearButton:pressed,
+QPushButton#LogSaveButton:pressed {
+    background: #e2e8f0;
+}
+
+QTextBrowser#LogPanel {
+    background: #f8fafc;
+    color: #334155;
+    border: 1px solid #d7dde5;
+    border-radius: 6px;
+    padding: 8px;
+    font-family: "Consolas", "Cascadia Mono";
+    font-size: 12px;
+}
+
 /* Table */
-QTableWidget {
+QTableWidget, QTableView#DetectionResultTable {
     background: #ffffff;
     alternate-background-color: #f8fafc;
     border: 1px solid #d7dde5;
@@ -191,7 +285,7 @@ QTableWidget {
     selection-color: #1e3a8a;
 }
 
-QHeaderView::section {
+QTableWidget QHeaderView::section, QTableView#DetectionResultTable QHeaderView::section {
     background: #f1f5f9;
     color: #334155;
     border: none;
@@ -201,7 +295,7 @@ QHeaderView::section {
     font-weight: 700;
 }
 
-QTableCornerButton::section {
+QTableCornerButton::section, QTableView#DetectionResultTable QTableCornerButton::section {
     background: #f1f5f9;
     border: none;
 }
@@ -227,6 +321,121 @@ QWidget#ModelWidget {
 QWidget#ParamWidget {
     background: #f8fafc;
     border: 1px solid #d7dde5;
+}
+
+QWidget#ModelWidget QPushButton,
+QWidget#ParamWidget QPushButton {
+    background: #ffffff;
+    color: #374151;
+    border: 1px solid #cbd5e1;
+}
+
+QWidget#ModelWidget QPushButton:hover,
+QWidget#ParamWidget QPushButton:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+}
+
+QWidget#ModelWidget QPushButton:pressed,
+QWidget#ParamWidget QPushButton:pressed {
+    background: #e2e8f0;
+}
+
+/* Quick result */
+QWidget#QuickResWidget {
+    background: #ffffff;
+    border: 1px solid #d7dde5;
+    border-radius: 8px;
+}
+
+QLabel#QuickResultTitle {
+    color: #111827;
+    border: none;
+    font-size: 24px;
+    font-weight: 700;
+}
+
+QLabel#QuickResultValue {
+    border: none;
+    font-size: 28px;
+    font-weight: 800;
+}
+
+QLabel#QuickMetricTitle {
+    color: #374151;
+    border: none;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+QLabel#QuickScoreValue {
+    border: none;
+    font-size: 20px;
+    font-weight: 800;
+}
+
+QLabel#QuickInference,
+QLabel#QuickDefectArea {
+    background: transparent;
+    color: #374151;
+    border: none;
+    border-radius: 0;
+    padding: 9px 4px;
+    min-height: 24px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+QLabel#QuickInference {
+    border-bottom: 1px solid #e5e7eb;
+}
+
+QFrame#QuickSectionSeparator {
+    background: #e5e7eb;
+    border: none;
+    max-height: 1px;
+}
+
+/* Image comparison view */
+QWidget#ViewWidget {
+    background: transparent;
+}
+
+QWidget#ImagePanel {
+    background: #ffffff;
+    border: 1px solid #d7dde5;
+    border-radius: 8px;
+}
+
+QLabel#ImagePanelTitle {
+    background: #ffffff;
+    color: #334155;
+    border: none;
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+    padding: 0 8px;
+    font-weight: 700;
+    font-size: 15px;
+}
+
+QGraphicsView#ImageGraphicsView {
+    background: transparent;
+    border: none;
+}
+
+QGraphicsView#ImageGraphicsView:focus {
+    border: none;
+}
+
+QLabel#ImagePanelFooter {
+    background: #ffffff;
+    color: #64748b;
+    border: none;
+    border-top: 1px solid #e5e7eb;
+    border-bottom-left-radius: 5px;
+    border-bottom-right-radius: 5px;
+    padding: 0 8px;
+    font-size: 12px;
 }
 
 QComboBox {
@@ -268,13 +477,11 @@ QComboBox::drop-down:hover {
 }
 
 QComboBox::down-arrow {
-    image: none;
-    width: 0;
-    height: 0;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-top: 6px solid #374151;
-    margin-right: 7px;
+    image: url(:/down-arrow.svg);
+    subcontrol-origin: padding;
+    subcontrol-position: center;
+    width: 12px;
+    height: 8px;
 }
 
 QComboBox QAbstractItemView {

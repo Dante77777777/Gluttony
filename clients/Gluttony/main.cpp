@@ -1,5 +1,5 @@
 #include "mainwindow.h"
-
+#include "LogWidget/LogMessage.h"
 #include <QApplication>
 
 void applyQSS()
@@ -17,6 +17,7 @@ int main(int argc, char *argv[])
     QApplication a(argc, argv);
     MainWindow w;
     applyQSS();
+    LogMessage::getInstance().installMessageHandler();
     w.show();
     return a.exec();
 }

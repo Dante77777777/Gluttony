@@ -30,6 +30,7 @@ public:
     QLabel* alpha;
     QDoubleSpinBox* alphaValue;
     QSlider* alphaSlider;
+    QLabel* deviceLabel;
     QComboBox* device;
     QVBoxLayout* paramsLayout;
     QHBoxLayout* thresholdLayout;
@@ -55,7 +56,9 @@ public:
         imageLabel->setObjectName("SectionLabel");
         imagePath = new QLineEdit();
         selectImage = new QPushButton("Select Image");
+        selectImage->setIcon(QIcon(":/file-image.png"));
         selectFolder = new QPushButton("Select Folder");
+        selectFolder->setIcon(QIcon(":/folder-open.png"));
         imageLayout = new QVBoxLayout();
         imageLayout->setContentsMargins(0, 0, 0, 0);
         imageLayout->setSpacing(8);
@@ -79,6 +82,7 @@ public:
         alphaValue = new QDoubleSpinBox();
         alphaSlider = new QSlider();
         alphaSlider->setOrientation(Qt::Horizontal);
+        deviceLabel = new QLabel("Device");
         device = new QComboBox();
         device->addItem("CPU");
         paramsLayout = new QVBoxLayout();
@@ -100,6 +104,7 @@ public:
         paramsLayout->addWidget(thresholdSlider);
         paramsLayout->addLayout(alphaLayout);
         paramsLayout->addWidget(alphaSlider);
+        paramsLayout->addWidget(deviceLabel);
         paramsLayout->addWidget(device);
         thresholdValue->setButtonSymbols(QAbstractSpinBox::NoButtons);
         alphaValue->setButtonSymbols(QAbstractSpinBox::NoButtons);

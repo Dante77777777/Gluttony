@@ -1,6 +1,7 @@
 <RCC>
     <qresource prefix="/">
         <file>style.qss</file>
+        <file>down-arrow.svg</file>
         <file>file-image.png</file>
         <file>about.png</file>
         <file>folder-open.png</file>
@@ -13,6 +14,12 @@
         <file>zoom in.png</file>
         <file>zoom out.png</file>
         <file>Detective.png</file>
+        <file>defect-area.png</file>
+        <file>score.png</file>
+        <file>inference.png</file>
+        <file>save.png</file>
+        <file>refer.png</file>
+        <file>model.png</file>
     </qresource>
     <qresource prefix="/icons"/>
 </RCC>

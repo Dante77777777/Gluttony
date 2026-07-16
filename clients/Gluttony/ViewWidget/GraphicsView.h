@@ -35,6 +35,9 @@ private:
 public slots:
     void onZoom(double scaleFactor);
     void onCenter();
+    void onFit();
+    void onRotateLeft();
+    void onRotateRight();
 
 private:
     double zoomValue = 1;

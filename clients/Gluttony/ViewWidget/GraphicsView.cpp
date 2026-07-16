@@ -4,8 +4,8 @@
 #define ZOOMMIN 0.1
 
 GraphicsView::GraphicsView(QWidget* parent)
-    : GVScene(new QGraphicsScene(this))
-    , QGraphicsView(new QGraphicsView(this))
+    : QGraphicsView(parent)
+    , GVScene(new QGraphicsScene(this))
     , GVImageItem(new ImageItem(this))
     , ImageInfoLabel(new QLabel(this))
     , ImageInfoWidget(new QWidget(this))
@@ -22,7 +22,7 @@ GraphicsView::GraphicsView(QWidget* parent)
     this->setDragMode(QGraphicsView::ScrollHandDrag);
 
     this->setSceneRect(INT_MIN/2,INT_MIN/2,INT_MAX,INT_MAX);
-
+    paintBackgroundBoard();
     centerOn(0,0);
 
     if(!setupWidget())
@@ -102,17 +102,17 @@ void GraphicsView::mouseDoubleClickEvent(QMouseEvent* event)
 
 void GraphicsView::wheelEvent(QWheelEvent* event)
 {
-    QPoint scrollAmount = event->angleDelta()/8;
+    QPoint scrollAmount = event->angleDelta();
     if((scrollAmount.y() > 0) && (zoomValue >= ZOOMMAX))
     {
         return ;
     }
-    if((scrollAmount.y() < 0) && (zoomValue <= ZOOMMAX))
+    if((scrollAmount.y() < 0) && (zoomValue <= ZOOMMIN))
     {
         return ;
     }
     scrollAmount.y() > 0 ? onZoom(1.1) : onZoom(0.9);
-    QGraphicsView::wheelEvent(event);
+    event->accept();
 }
 
 
@@ -133,25 +133,80 @@ void GraphicsView::paintEvent(QPaintEvent* event)
 }
 
 
-void fitFrame()
+void GraphicsView::fitFrame()
 {
+    if(this->width() < 1 || GVImage.height() < 1)
+    {
+        return ;
+    }
+    double viewWidth = this->width();
+    double viewHeight = this->height();
+    double widthScale = (GVImage.width()+1) / viewWidth;
+    double heightScale = (GVImage.height()+1) / viewHeight;
 
+    double minScale = (widthScale >= heightScale) ? 1/widthScale : 1/heightScale;
+    double finalScale = minScale / zoomValue;
+
+    onZoom(finalScale);
+    zoomValue = minScale;
 }
 
 
-void paintBackgroundBoard()
+void GraphicsView::paintBackgroundBoard()
 {
-
+    backGroundPixmap.fill(QColor("#111827"));
 }
 
 
-void onZoom(double scaleFactor)
+void GraphicsView::onZoom(double scaleFactor)
 {
-
+    if (GVImageItem->pixmap().isNull()) {
+        return;
+    }
+    zoomValue *= scaleFactor;
+    this->scale(scaleFactor,scaleFactor);
 }
 
 
-void onCenter()
+void GraphicsView::onCenter()
 {
+    if (GVImageItem->pixmap().isNull()) {
+        return;
+    }
+    this->centerOn(GVImageItem->pixmap().width()/2,GVImageItem->pixmap().height()/2);
+    GVImageItem->setPos(0,0);
+}
 
+
+void GraphicsView::onFit()
+{
+    if (GVImageItem->pixmap().isNull()) {
+        return;
+    }
+    resetTransform();
+    fitInView(GVImageItem,Qt::KeepAspectRatio);
+    zoomValue = transform().m11();
+    centerOn(GVImageItem);
+}
+
+
+void GraphicsView::onRotateLeft()
+{
+    if (GVImageItem->pixmap().isNull()) {
+        return;
+    }
+    GVImageItem->setTransformOriginPoint(GVImageItem->boundingRect().center());
+    GVImageItem->setRotation(GVImageItem->rotation()-90);
+    onFit();
+}
+
+
+void GraphicsView::onRotateRight()
+{
+    if (GVImageItem->pixmap().isNull()) {
+        return;
+    }
+    GVImageItem->setTransformOriginPoint(GVImageItem->boundingRect().center());
+    GVImageItem->setRotation(GVImageItem->rotation()+90);
+    onFit();
 }

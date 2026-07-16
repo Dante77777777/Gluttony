@@ -35,9 +35,10 @@ public:
         loadModelButton = new QPushButton();
         models = new QComboBox();
         loadModelButton->setText("Load Model");
-        models->addItem("1",1);
-        models->addItem("2",2);
-        models->addItem("3",3);
+        loadModelButton->setIcon(QIcon(":/model.png"));
+        // models->addItem("1",1);
+        // models->addItem("2",2);
+        // models->addItem("3",3);
 
         contentLayout->addWidget(models);
         contentLayout->addWidget(loadModelButton);

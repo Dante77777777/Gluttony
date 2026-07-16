@@ -16,10 +16,14 @@ qt_add_executable(Gluttony
     DetectionResult/DetectionResult.h
     DetectionResult/DetectionResult.cpp
     DetectionResult/DetectionResultUI.h
+    DetectionResult/DetectionResultModel.h
+    DetectionResult/DetectionResultModel.cpp
 
     LogWidget/LogWidget.h
     LogWidget/LogWidget.cpp
     LogWidget/LogWidgetUI.h
+    LogWidget/LogMessage.h
+    LogWidget/LogMessage.cpp
 
     ModelWidget/ModelWidget.h
     ModelWidget/ModelWidget.cpp
@@ -44,9 +48,19 @@ qt_add_executable(Gluttony
     ViewWidget/GraphicsView.cpp
     ViewWidget/ImageItem.h
     ViewWidget/ImageItem.cpp
+
+    statusBar/StatusBar.h
+    statusBar/StatusBar.cpp
+    statusBar/StatusBarUI.h
+
+    Inference/InferenceEngine.h
+    Inference/InferenceEngine.cpp
 )
 
 set(RESOURCE resources/resources.qrc)
+set(OpenVINO_DIR "D:/Anaconda/Lib/site-packages/openvino/cmake")
+
+find_package(OpenVINO REQUIRED COMPONENTS Runtime)
 
 qt_add_resources(APP_RESOURCE ${RESOURCE})
 target_sources(Gluttony PRIVATE ${APP_RESOURCE})
@@ -59,6 +73,13 @@ target_link_libraries(Gluttony
 
 target_include_directories(Gluttony PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(Gluttony PRIVATE ${OpenCV_LIBS})
+
+target_link_libraries(Gluttony
+    PRIVATE
+        Qt::Core
+        Qt::Widgets
+        openvino::runtime
+)
 
 include(GNUInstallDirs)
 

@@ -30,6 +30,8 @@ void ImageItem::hoverMoveEvent(QGraphicsSceneHoverEvent* event)
                                 .arg(QString::number(R))
                                 .arg(QString::number(G))
                                 .arg(QString::number(B));
+
+    emit ImageInfo(imageInfo);
 }
 
 
