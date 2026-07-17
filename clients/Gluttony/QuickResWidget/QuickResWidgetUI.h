@@ -102,4 +102,13 @@ public:
                 .arg(color)
             );
     }
+
+    void setMetrics(int inferenceMs, int defectArea)
+    {
+        timeLabel->setText(
+            QString("Inference: %1 ms").arg(inferenceMs));
+
+        areaLabel->setText(
+            QString("Defect Area: %1 px").arg(defectArea));
+    }
 };

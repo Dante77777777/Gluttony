@@ -57,10 +57,10 @@ void MainWindow::setupToolBar()
     connect(topToolBar->ui->rotateRightAction,&QAction::triggered,viewWidget->ui->originalGV,&GraphicsView::onRotateRight);
     connect(topToolBar->ui->rotateRightAction,&QAction::triggered,viewWidget->ui->resultGV,&GraphicsView::onRotateRight);
 
-    connect(modelWidget,
-            &ModelWidget::sigModelSelect,
-            this,
-            &MainWindow::onModelSelected);
+    connect(modelWidget,&ModelWidget::sigModelSelect,this,&MainWindow::onModelSelected);
+
+    connect(paramWidget,&ParamWidget::sigImageSlected,this,&MainWindow::onImageSelected);
+    connect(topToolBar->ui->startAction,&QAction::triggered,this,&MainWindow::onStartActionTriggered);
 }
 
 
@@ -114,4 +114,61 @@ void MainWindow::onModelSelected(const QString& xmlPath)
     for (const QString& output : inferenceEngine.outputDescriptions()) {
         QDEBUG(output);
     }
+}
+
+
+void MainWindow::onImageSelected(const QImage image, const QString imagePath)
+{
+    selectedImage = image;
+    slectedImagePath = imagePath;
+}
+
+
+void MainWindow::onStartActionTriggered()
+{
+    if(!inferenceEngine.isLoaded())
+    {
+        const QString message = "Please Load an OpenVINO Model Before Starting Inference.";
+        QWARNING(message);
+        QMessageBox::warning(this,"Model Not Loaded",message);
+        return ;
+    }
+    if(selectedImage.isNull())
+    {
+        const QString message = "Please Select an Image Before Starting Inference.";
+        QWARNING(message);
+        QMessageBox::warning(this,"Image Not Loaded",message);
+        return ;
+    }
+
+    InferenceResult result;
+    QString errorMessage;
+    if(!inferenceEngine.inferImage(selectedImage,&result,&errorMessage))
+    {
+        QWARNING(errorMessage);
+        QMessageBox::critical(this,"Inference Failed",errorMessage);
+        return ;
+    }
+
+    quickResWidget->ui->setNG(result.isNg,result.score);
+    quickResWidget->ui->setMetrics(result.inferenceMs,result.defectArea);
+
+    if(!result.heatmapOverlay.isNull())
+    {
+        viewWidget->ui->resultGV->setImage(result.heatmapOverlay);
+    }
+
+    const QString status = result.isNg ? "NG" : "OK";
+
+    QDEBUG(
+        QString(
+            "Inference completed | File: %1 | Result: %2 | "
+            "Score: %3 | Time: %4 ms | Defect Area: %5 px"
+            )
+            .arg(slectedImagePath)
+            .arg(status)
+            .arg(result.score, 0, 'f', 4)
+            .arg(result.inferenceMs)
+            .arg(result.defectArea)
+        );
 }

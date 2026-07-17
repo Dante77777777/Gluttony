@@ -6,6 +6,7 @@
 #include <QPushButton>
 #include <QBoxLayout>
 #include <QFile>
+#include <QImage>
 
 #include "ToolBar/ToolBar.h"
 #include "ModelWidget/ModelWidget.h"
@@ -28,6 +29,8 @@ public:
     void setupToolBar();
 private slots:
     void onModelSelected(const QString& xmlPath);
+    void onImageSelected(const QImage image, const QString imagePath);
+    void onStartActionTriggered();
 
 private:
     QWidget* centralWidget;
@@ -46,6 +49,9 @@ private:
     QVBoxLayout* dataLayout;
     QHBoxLayout* viewLayout;
     QHBoxLayout* leftTopLayout;
+
+    QImage selectedImage;
+    QString slectedImagePath;
 
 };
 #endif // MAINWINDOW_H

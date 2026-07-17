@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QImage>
 
 #include "ParamWidgetUI.h"
 #include "../LogWidget/LogMessage.h"
@@ -16,6 +17,9 @@ public:
     ParamWidget(ViewWidget* viewWidget_, QWidget* parent = nullptr);
     ~ParamWidget();
     void setupUI();
+signals:
+    void sigImageSlected(const QImage& iamge, const QString& imagePath);
+
 public slots:
     void onSelectImageButtonClicked();
     void onSelectFolderButtonClicked();

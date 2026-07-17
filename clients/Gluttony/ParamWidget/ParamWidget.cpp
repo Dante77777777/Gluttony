@@ -39,6 +39,7 @@ void ParamWidget::onSelectImageButtonClicked()
     QImage image = QImage(imagePath);
     viewWidget->ui->originalGV->setImage(image);
     ui->imagePath->setText(imagePath);
+    emit sigImageSlected(image,imagePath);
     QDEBUG("Image Selected From [ " + imagePath + " ]");
 }
 
