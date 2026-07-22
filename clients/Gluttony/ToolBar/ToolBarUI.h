@@ -33,7 +33,9 @@ public:
         openImageAction = new QAction(QIcon(":/file-image.png"),"Open Image",parent);
         openFolderAction = new QAction(QIcon(":/folder-open.png"),"Open Folder",parent);
         startAction = new QAction(QIcon(":/play.png"),"Strat",parent);
+        startAction->setEnabled(false);
         stopAction = new QAction(QIcon(":/stop.png"),"Stop",parent);
+        stopAction->setEnabled(false);
         zoomInAction = new QAction(QIcon(":/zoom in.png"),"Zoom In",parent);
         zoomOutAction = new QAction(QIcon(":/zoom out.png"),"Zoom Out",parent);
         fitAction = new QAction(QIcon(":/scale-up.png"),"Fit",parent);

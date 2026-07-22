@@ -13,8 +13,9 @@ public:
     explicit DetectionResult(QWidget* parent = nullptr);
 private:
     void setup();
-
-private:
+signals:
+    void sigRecord(const DetectionRecord& record);
+public:
     DetectionResultUI* ui;
     DetectionResultModel* model;
 };

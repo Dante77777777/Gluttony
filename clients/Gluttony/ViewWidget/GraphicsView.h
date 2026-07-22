@@ -23,6 +23,10 @@ public:
     void clearImageInfo();
     void setImage(const QImage& image);
 
+signals:
+    // 当前视图缩放比例。1.0 表示以图像原始像素大小显示。
+    void zoomChanged(double zoomScale);
+
 protected:
     void mouseDoubleClickEvent(QMouseEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;

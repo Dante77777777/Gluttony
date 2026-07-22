@@ -438,6 +438,35 @@ QLabel#ImagePanelFooter {
     font-size: 12px;
 }
 
+QWidget#ResultImageFooter {
+    background: #ffffff;
+    border: none;
+    border-top: 1px solid #e5e7eb;
+    border-bottom-left-radius: 5px;
+    border-bottom-right-radius: 5px;
+}
+
+QLabel#HeatmapLegendLabel {
+    background: transparent;
+    color: #475569;
+    border: none;
+    font-size: 12px;
+}
+
+QFrame#HeatmapGradient {
+    border: 1px solid #cbd5e1;
+    border-radius: 2px;
+    background: qlineargradient(
+        x1: 0, y1: 0, x2: 1, y2: 0,
+        stop: 0.00 #1e3a8a,
+        stop: 0.22 #2563eb,
+        stop: 0.43 #06b6d4,
+        stop: 0.63 #facc15,
+        stop: 0.82 #f97316,
+        stop: 1.00 #dc2626
+    );
+}
+
 QComboBox {
     background: #f8fafc;
     color: #1f2937;

@@ -18,6 +18,7 @@ int main(int argc, char *argv[])
     MainWindow w;
     applyQSS();
     LogMessage::getInstance().installMessageHandler();
+    qRegisterMetaType<InferenceResult>("InferenceResult");
     w.show();
     return a.exec();
 }

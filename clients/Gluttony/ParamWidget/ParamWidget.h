@@ -18,13 +18,14 @@ public:
     ~ParamWidget();
     void setupUI();
 signals:
-    void sigImageSlected(const QImage& iamge, const QString& imagePath);
-
+    void sigImageSelected(const QImage& iamge, const QString& imagePath);
+    void sigFolderSelected(const QString& folderPath);
 public slots:
     void onSelectImageButtonClicked();
     void onSelectFolderButtonClicked();
-private:
+public:
     ParamWidgetUI* ui;
+private:
     ViewWidget* viewWidget;
 };
 

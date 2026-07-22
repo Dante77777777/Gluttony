@@ -2,7 +2,7 @@
 
 DetectionResultModel::DetectionResultModel(QObject* parent)
     : QAbstractTableModel(parent)
-    , records(1)
+    , records(0)
 {
 
 }
@@ -32,7 +32,7 @@ QVariant DetectionResultModel::data(const QModelIndex& index, int role) const
         return {};
     }
 
-    const DetectionRecord record = records.at(index.row());
+    const DetectionRecord &record = records.at(index.row());
     if(role == Qt::DisplayRole)
     {
         switch (index.column()) {
@@ -85,7 +85,7 @@ QVariant DetectionResultModel::headerData(int section, Qt::Orientation orientati
 
     static const QStringList headers = {"File","Status","Score","Time","Area"};
 
-    if(section >= 0 && section < records.size())
+    if(section >= 0 && section < headers.size())
     {
         return headers.at(section);
     }
@@ -105,4 +105,15 @@ void DetectionResultModel::clear()
     beginResetModel();
     records.clear();
     endResetModel();
+}
+
+
+bool DetectionResultModel::recordAt(int row, DetectionRecord& record) const
+{
+    if(row < 0 || row > records.size())
+    {
+        return false;
+    }
+    record = records.at(row);
+    return true;
 }

@@ -38,8 +38,9 @@ void ParamWidget::onSelectImageButtonClicked()
     }
     QImage image = QImage(imagePath);
     viewWidget->ui->originalGV->setImage(image);
+    viewWidget->setOriginalImagePath(imagePath);
     ui->imagePath->setText(imagePath);
-    emit sigImageSlected(image,imagePath);
+    emit sigImageSelected(image,imagePath);
     QDEBUG("Image Selected From [ " + imagePath + " ]");
 }
 
@@ -53,8 +54,10 @@ void ParamWidget::onSelectFolderButtonClicked()
     {
         QCRITICAL("Empty Image Folder");
         QMessageBox::critical(this,"Error","This Image Folder URL is Invalid!");
+        return ;
     }
 
     ui->imagePath->setText(folderPath);
+    emit sigFolderSelected(folderPath);
     QDEBUG("Image Folder Selected From [ " + folderPath + " ]");
 }

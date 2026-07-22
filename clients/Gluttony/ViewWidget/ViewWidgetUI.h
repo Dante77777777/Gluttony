@@ -24,7 +24,11 @@ public:
     QVBoxLayout* resultLayout;
     QLabel* resultLabel;
     GraphicsView* resultGV;
-    QLabel* resultBLabel;
+    QWidget* resultFooter;
+    QLabel* heatmapLabel;
+    QLabel* heatmapLowLabel;
+    QFrame* heatmapGradient;
+    QLabel* heatmapHighLabel;
 
     void setupUI(QWidget* parent)
     {
@@ -65,10 +69,34 @@ public:
         originalBLabel->setObjectName("ImagePanelFooter");
         originalBLabel->setFixedHeight(25);
         originalBLabel->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
-        resultBLabel = new QLabel(resultWidget);
-        resultBLabel->setObjectName("ImagePanelFooter");
-        resultBLabel->setFixedHeight(25);
-        resultBLabel->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
+        originalBLabel->setText("No image selected");
+
+        resultFooter = new QWidget(resultWidget);
+        resultFooter->setObjectName("ResultImageFooter");
+        resultFooter->setFixedHeight(25);
+        resultFooter->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
+
+        auto* resultFooterLayout = new QHBoxLayout(resultFooter);
+        resultFooterLayout->setContentsMargins(8, 0, 8, 0);
+        resultFooterLayout->setSpacing(8);
+
+        heatmapLabel = new QLabel("Heatmap", resultFooter);
+        heatmapLabel->setObjectName("HeatmapLegendLabel");
+        heatmapLowLabel = new QLabel("Low", resultFooter);
+        heatmapLowLabel->setObjectName("HeatmapLegendLabel");
+
+        heatmapGradient = new QFrame(resultFooter);
+        heatmapGradient->setObjectName("HeatmapGradient");
+        heatmapGradient->setFixedSize(140, 14);
+
+        heatmapHighLabel = new QLabel("High", resultFooter);
+        heatmapHighLabel->setObjectName("HeatmapLegendLabel");
+
+        resultFooterLayout->addWidget(heatmapLabel);
+        resultFooterLayout->addWidget(heatmapLowLabel);
+        resultFooterLayout->addWidget(heatmapGradient);
+        resultFooterLayout->addWidget(heatmapHighLabel);
+        resultFooterLayout->addStretch();
 
         originalLayout->addWidget(originalLabel);
         originalLayout->addWidget(originalGV);
@@ -76,7 +104,7 @@ public:
 
         resultLayout->addWidget(resultLabel);
         resultLayout->addWidget(resultGV);
-        resultLayout->addWidget(resultBLabel);
+        resultLayout->addWidget(resultFooter);
 
         parent->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Expanding);
         originalWidget->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Expanding);

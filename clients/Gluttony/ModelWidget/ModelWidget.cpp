@@ -35,7 +35,7 @@ void ModelWidget::onSelectModelButtonClicked()
     if(xmlModelPath.isEmpty())
     {
         QMessageBox::critical(this,"Error","Slected Model Path is Empty!");
-        QFATAL("Slected Model Path is Empty!");
+        QCRITICAL("Slected Model Path is Empty!");
         return ;
     }
     ui->models->addItem(QFileInfo(xmlModelPath).fileName(),xmlModelPath);

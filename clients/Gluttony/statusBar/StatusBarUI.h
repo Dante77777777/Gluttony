@@ -45,12 +45,12 @@ public:
         readyLabel = new QLabel("Ready");
         readyLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
-        imageCountLabel = new QLabel("Images:6");
-        ngLabel = new QLabel("NG:3");
+        imageCountLabel = new QLabel("Images:0");
+        ngLabel = new QLabel("NG:0");
         ngLabel->setObjectName("FooterNg");
-        okLabel = new QLabel("OK:3");
+        okLabel = new QLabel("OK:0");
         okLabel->setObjectName("FooterOk");
-        avgScoreLabel = new QLabel("Avg Score:0.480");
+        avgScoreLabel = new QLabel("Avg Score:0.000");
         cpuLabel = new QLabel("● CPU");
 
         midLayout->addWidget(readyLabel);

@@ -165,6 +165,7 @@ void GraphicsView::onZoom(double scaleFactor)
     }
     zoomValue *= scaleFactor;
     this->scale(scaleFactor,scaleFactor);
+    emit zoomChanged(zoomValue);
 }
 
 
@@ -187,6 +188,7 @@ void GraphicsView::onFit()
     fitInView(GVImageItem,Qt::KeepAspectRatio);
     zoomValue = transform().m11();
     centerOn(GVImageItem);
+    emit zoomChanged(zoomValue);
 }
 
 

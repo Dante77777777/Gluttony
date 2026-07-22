@@ -55,6 +55,15 @@ qt_add_executable(Gluttony
 
     Inference/InferenceEngine.h
     Inference/InferenceEngine.cpp
+
+    Utils/ImageQueue.h
+    Utils/ImageQueue.cpp
+    Utils/ImageConversion.h
+
+    Workers/ImageProducer.h
+    Workers/ImageProducer.cpp
+    Workers/ImageWorker.h
+    Workers/ImageWorker.cpp
 )
 
 set(RESOURCE resources/resources.qrc)

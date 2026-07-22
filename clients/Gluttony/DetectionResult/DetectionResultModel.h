@@ -5,15 +5,18 @@
 #include <QVector>
 #include <QString>
 #include <QColor>
+#include <QImage>
 #include <QBrush>
 
 struct DetectionRecord
 {
     QString fileName;
+    QString sourceFileName;
     bool isNG;
     double score;
     int inferenceMS;
     int defectArea;
+    QImage heatmapOverlay;
 };
 
 class DetectionResultModel : public QAbstractTableModel
@@ -27,6 +30,9 @@ public:
 
     void appendResult(const DetectionRecord& record);
     void clear();
+
+    bool recordAt(int row, DetectionRecord& record) const;
+
 private:
     QVector<DetectionRecord> records;
 };

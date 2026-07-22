@@ -31,7 +31,7 @@ MainWindow::~MainWindow() {}
 void MainWindow::setupToolBar()
 {
     topToolBar->ui->setupUI(this);
-    connect(topToolBar->ui->openImageAction,&QAction::triggered,paramWidget,&ParamWidget::onSelectImageButtonClicked);
+    connect(topToolBar->ui->openImageAction,&QAction::triggered,paramWidget,&::ParamWidget::onSelectImageButtonClicked);
     connect(topToolBar->ui->openFolderAction,&QAction::triggered,paramWidget,&ParamWidget::onSelectFolderButtonClicked);
 
     connect(topToolBar->ui->zoomOutAction,&QAction::triggered,viewWidget->ui->originalWidget,[this](){
@@ -59,8 +59,12 @@ void MainWindow::setupToolBar()
 
     connect(modelWidget,&ModelWidget::sigModelSelect,this,&MainWindow::onModelSelected);
 
-    connect(paramWidget,&ParamWidget::sigImageSlected,this,&MainWindow::onImageSelected);
+    connect(paramWidget,&ParamWidget::sigImageSelected,this,&MainWindow::onImageSelected);
+    connect(paramWidget,&ParamWidget::sigFolderSelected,this,&MainWindow::onFolderSelected);
+
     connect(topToolBar->ui->startAction,&QAction::triggered,this,&MainWindow::onStartActionTriggered);
+
+    connect(topToolBar->ui->stopAction,&QAction::triggered,this,&MainWindow::onStopActionTriggered);
 }
 
 
@@ -90,6 +94,8 @@ void MainWindow::setupUI()
 
     this->setCentralWidget(centralWidget);
 
+    connect(DRWidget,&DetectionResult::sigRecord,this,&MainWindow::onRecordClicked);
+
 }
 
 
@@ -103,6 +109,8 @@ void MainWindow::onModelSelected(const QString& xmlPath)
         return;
     }
 
+    loadedModelPath = xmlPath;
+
     QDEBUG(QString("Model loaded successfully: %1").arg(xmlPath));
     QDEBUG("Device: CPU");
 
@@ -114,6 +122,11 @@ void MainWindow::onModelSelected(const QString& xmlPath)
     for (const QString& output : inferenceEngine.outputDescriptions()) {
         QDEBUG(output);
     }
+
+    if(!slectedImagePath.isNull() || !selectedFolderPath.isNull())
+    {
+        topToolBar->ui->startAction->setEnabled(true);
+    }
 }
 
 
@@ -121,11 +134,51 @@ void MainWindow::onImageSelected(const QImage image, const QString imagePath)
 {
     selectedImage = image;
     slectedImagePath = imagePath;
+    if(!loadedModelPath.isNull())
+    {
+        topToolBar->ui->startAction->setEnabled(true);
+    }
+    inputMode = InputMode::SINGLEIMAGE;
+    selectedFolderPath.clear();
+}
+
+
+void MainWindow::onFolderSelected(const QString& folderPath)
+{
+    selectedFolderPath = folderPath;
+    if(!loadedModelPath.isNull())
+    {
+        topToolBar->ui->startAction->setEnabled(true);
+    }
+    inputMode = InputMode::FOLDER;
 }
 
 
 void MainWindow::onStartActionTriggered()
 {
+    if(detectionStatus == DetectionStatus::PAUSED)
+    {
+        detectionStatus = DetectionStatus::RUNNING;
+        imageQueue->resume();
+        topToolBar->ui->startAction->setEnabled(false);
+        topToolBar->ui->stopAction->setEnabled(true);
+
+        statusBar->ui->readyLabel->setText(QString("Detecting: %1/%2").arg(completedImageCount).arg(totalImageCount));
+        return ;
+    }
+
+    if(detectionStatus != DetectionStatus::IDLE)
+    {
+        return ;
+    }
+
+    if(detectionStatus == DetectionStatus::IDLE)
+    {
+        detectionStatus = DetectionStatus::RUNNING;
+        topToolBar->ui->startAction->setEnabled(false);
+        topToolBar->ui->stopAction->setEnabled(true);
+    }
+
     if(!inferenceEngine.isLoaded())
     {
         const QString message = "Please Load an OpenVINO Model Before Starting Inference.";
@@ -133,42 +186,253 @@ void MainWindow::onStartActionTriggered()
         QMessageBox::warning(this,"Model Not Loaded",message);
         return ;
     }
-    if(selectedImage.isNull())
+
+    // if(inferenceThread != nullptr)
+    // {
+    //     QMessageBox::information(this, "Detection Running","A Detection Task is Already Running.");
+    //     return ;
+    // }
+
+    if(inputMode == InputMode::SINGLEIMAGE)
     {
-        const QString message = "Please Select an Image Before Starting Inference.";
-        QWARNING(message);
-        QMessageBox::warning(this,"Image Not Loaded",message);
+        if(slectedImagePath.isEmpty())
+        {
+            //QWARNING("hello");
+            return ;
+        }
+        startDetection({slectedImagePath});
         return ;
     }
 
-    InferenceResult result;
-    QString errorMessage;
-    if(!inferenceEngine.inferImage(selectedImage,&result,&errorMessage))
+    if(inputMode == InputMode::FOLDER)
     {
-        QWARNING(errorMessage);
-        QMessageBox::critical(this,"Inference Failed",errorMessage);
+        if(selectedFolderPath.isEmpty())
+        {
+            return ;
+        }
+        startFolderDetection(selectedFolderPath);
         return ;
     }
 
-    quickResWidget->ui->setNG(result.isNg,result.score);
-    quickResWidget->ui->setMetrics(result.inferenceMs,result.defectArea);
+    QMessageBox::warning(
+        this,
+        "No Input",
+        "Please Select an Image or Folder First."
+        );
+}
 
-    if(!result.heatmapOverlay.isNull())
+
+void MainWindow::onStopActionTriggered()
+{
+    if(detectionStatus != DetectionStatus::RUNNING || !imageQueue)
     {
-        viewWidget->ui->resultGV->setImage(result.heatmapOverlay);
+        return ;
     }
 
-    const QString status = result.isNg ? "NG" : "OK";
+    imageQueue->pause();
+    detectionStatus = DetectionStatus::PAUSEREQUEST;
+    QDEBUG("Detection is Pausing");
+    topToolBar->ui->startAction->setEnabled(false);
+    topToolBar->ui->stopAction->setEnabled(false);
+
+    statusBar->ui->readyLabel->setText(QString( "Finishing Current Image..."));
+}
+
+
+void MainWindow::onTaskFinished(const QString& filePath, const QImage& sourceImage, const InferenceResult& result)
+{
+    ++completedImageCount;
+    // 显示当前完成的原图与热力图。
+    viewWidget->ui->originalGV->setImage(sourceImage);
+    viewWidget->setOriginalImagePath(filePath);
+    viewWidget->ui->resultGV->setImage(result.heatmapOverlay);
+
+    // 右侧当前结果。
+    quickResWidget->ui->setNG(result.isNg, result.score);
+    quickResWidget->ui->setMetrics(
+        result.inferenceMs,
+        result.defectArea
+        );
+
+    // 表格增加一行。
+    DetectionRecord record;
+    record.fileName = QString("%1/%2").arg(QFileInfo(filePath).dir().dirName()).arg(QFileInfo(filePath).fileName());
+    record.isNG = result.isNg;
+    record.score = result.score;
+    record.inferenceMS = result.inferenceMs;
+    record.defectArea = result.defectArea;
+    record.sourceFileName = filePath;
+    record.heatmapOverlay = result.heatmapOverlay;
+
+    DRWidget->model->appendResult(record);
 
     QDEBUG(
-        QString(
-            "Inference completed | File: %1 | Result: %2 | "
-            "Score: %3 | Time: %4 ms | Defect Area: %5 px"
-            )
-            .arg(slectedImagePath)
-            .arg(status)
+        QString("Inference completed | File: %1 | Result: %2 | "
+                "Score: %3 | Time: %4 ms | Defect Area: %5 px")
+            .arg(filePath)
+            .arg(result.isNg ? "NG" : "OK")
             .arg(result.score, 0, 'f', 4)
             .arg(result.inferenceMs)
             .arg(result.defectArea)
         );
+
+    if(result.isNg)
+    {
+        ngImageCount++;
+    }
+    else
+    {
+        okImageCount++;
+    }
+    totalScore += result.score;
+    refreshStatusBar(QString("Detecting: %1/%2").arg(completedImageCount).arg(totalImageCount));
+}
+
+
+void MainWindow::onTaskFailed(const QString& filePath, const QString& errorMessage)
+{
+    QWARNING(QString("File: %1 | %2").arg(filePath, errorMessage));
+}
+
+
+void MainWindow::onBatchFinished()
+{
+    QDEBUG("Batch inference finished.");
+
+    detectionStatus = DetectionStatus::IDLE;
+    topToolBar->ui->startAction->setEnabled(true);
+    topToolBar->ui->stopAction->setEnabled(false);
+    statusBar->ui->readyLabel->setText("Ready");
+
+    producerThread = nullptr;
+    inferenceThread = nullptr;
+    imageProducer = nullptr;
+    imageWorker = nullptr;
+    imageQueue.reset();
+    paramWidget->ui->selectImage->setEnabled(true);
+    paramWidget->ui->selectFolder->setEnabled(true);
+    refreshStatusBar(QString("Ready"));
+}
+
+
+void MainWindow::startWorkers()
+{
+    resetStatusBar();
+    DRWidget->model->clear();
+    imageQueue = std::make_shared<ImageQueue>(10);
+    producerThread = new QThread(this);
+    inferenceThread = new QThread(this);
+
+    imageProducer = new ImageProducer(imageQueue);
+    imageWorker = new ImageWorker(imageQueue,loadedModelPath);
+
+    imageProducer->moveToThread(producerThread);
+    imageWorker->moveToThread(inferenceThread);
+
+    connect(inferenceThread,&QThread::started,imageWorker,&ImageWorker::run);
+    connect(imageWorker,&ImageWorker::sigTaskFinished,this,&MainWindow::onTaskFinished);
+    connect(imageWorker,&ImageWorker::sigTaskFailed,this,&MainWindow::onTaskFailed);
+    connect(imageWorker,&ImageWorker::sigFinished,this,&MainWindow::onBatchFinished);
+    connect(imageWorker,&ImageWorker::sigPaused,this,&MainWindow::onDetectionPaused);
+
+    connect(imageProducer,&ImageProducer::sigFinish,producerThread,&QThread::quit);
+    connect(imageWorker,&ImageWorker::sigFinished,inferenceThread,&QThread::quit);
+    connect(producerThread,&QThread::finished,imageProducer,&QObject::deleteLater);
+    connect(inferenceThread,&QThread::finished,imageWorker,&QObject::deleteLater);
+
+    connect(imageProducer,&ImageProducer::sigTotalReady,this,[this](int total){
+        this->totalImageCount = total;
+        statusBar->ui->readyLabel->setText(QString("Detecting: 0/%1").arg(totalImageCount));
+    });
+}
+
+
+void MainWindow::startDetection(const QStringList& singleFiles)
+{
+    startWorkers();
+    connect(producerThread,&QThread::started,imageProducer,[this,singleFiles](){
+        imageProducer->produceFiles(singleFiles);
+    });
+    paramWidget->ui->selectImage->setEnabled(false);
+    paramWidget->ui->selectFolder->setEnabled(false);
+    producerThread->start();
+    inferenceThread->start();
+}
+
+
+void MainWindow::startFolderDetection(const QString& folderPath)
+{
+    startWorkers();
+    connect(producerThread,&QThread::started,imageProducer,[this,folderPath](){
+        imageProducer->produceFolder(folderPath);
+    });
+    paramWidget->ui->selectImage->setEnabled(false);
+    paramWidget->ui->selectFolder->setEnabled(false);
+    producerThread->start();
+    inferenceThread->start();
+}
+
+
+
+void MainWindow::resetStatusBar()
+{
+    completedImageCount = 0;
+    totalImageCount = 0;
+    ngImageCount = 0;
+    okImageCount = 0;
+    totalScore = 0.0;
+
+    refreshStatusBar("Detecting...");
+}
+
+
+void MainWindow::refreshStatusBar(const QString& stateText)
+{
+    const double avgScore = completedImageCount > 0 ? totalScore/completedImageCount : 0.0;
+    statusBar->ui->readyLabel->setText(stateText);
+    statusBar->ui->imageCountLabel->setText(QString("Images: %1").arg(completedImageCount));
+    statusBar->ui->okLabel->setText(QString("OK: %1").arg(okImageCount));
+    statusBar->ui->ngLabel->setText(QString("NG: %1").arg(ngImageCount));
+    statusBar->ui->avgScoreLabel->setText(QString("AvgScore: %1").arg(avgScore,0,'f',3));
+}
+
+
+void MainWindow::onDetectionPaused()
+{
+    if(detectionStatus != DetectionStatus::PAUSEREQUEST)
+    {
+        return ;
+    }
+
+    detectionStatus = DetectionStatus::PAUSED;
+    topToolBar->ui->startAction->setEnabled(true);
+    topToolBar->ui->stopAction->setEnabled(false);
+    QWARNING("Detection Paused!");
+    statusBar->ui->readyLabel->setText(QString("Detecting: %1/%2").arg(completedImageCount).arg(totalImageCount));
+}
+
+
+void MainWindow::onRecordClicked(const DetectionRecord& record)
+{
+    QImage originalImage(record.sourceFileName);
+    if(originalImage.isNull())
+    {
+        QWARNING(QString("Original Image:%1 is Null").arg(record.sourceFileName));
+        QMessageBox::warning(
+            this,
+            "Image Not Found",
+            "The original image cannot be loaded."
+            );
+        return ;
+    }
+    viewWidget->ui->originalGV->setImage(originalImage);
+    viewWidget->setOriginalImagePath(record.sourceFileName);
+
+    if(!record.heatmapOverlay.isNull())
+    {
+        viewWidget->ui->resultGV->setImage(record.heatmapOverlay);
+    }
+
+    quickResWidget->ui->setNG(record.isNG,record.score);
+    quickResWidget->ui->setMetrics(record.inferenceMS,record.defectArea);
 }

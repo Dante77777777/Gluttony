@@ -19,6 +19,17 @@ void DetectionResult::setup()
 
     ui->tableView->horizontalHeader()
         ->setSectionResizeMode(QHeaderView::Stretch);
+    connect(ui->tableView,&QTableView::clicked,this,[this](const QModelIndex& row){
+        if(!row.isValid())
+        {
+            return ;
+        }
+        DetectionRecord record;
+        if(model->recordAt(row.row(),record))
+        {
+            emit sigRecord(record);
+        }
+    });
 
     //this->setFixedHeight(240);
     //this->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Expanding);
