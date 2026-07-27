@@ -92,7 +92,14 @@ python -m unittest discover -s tests -v
 8. 批次与输入清单创建仓储。
 9. PENDING 领取、SUCCESS/FAILED 结果提交仓储。
 10. 批次完成、保存幂等、分页读取、草稿/历史删除和清理任务。
-11. 使用临时数据库运行的 C++ 持久化冒烟测试。
+11. 使用临时数据库运行的 C++ 仓储冒烟测试。
+12. 专用 `PersistenceWorker` 线程和线程内 SQLite 连接生命周期。
+13. 文件夹流式枚举、数据库任务领取和逐条推理调度。
+14. 热力图 PNG 临时写入、原子提交和失败回滚。
+15. 只保存 ID、指标和磁盘路径的轻量结果模型。
+16. 草稿保存/放弃、JSON manifest、历史加载和已保存批次删除。
+17. RUNNING 批次中断和 INTERRUPTED 批次断点续检。
+18. 覆盖完整工作器生命周期的磁盘落盘集成测试。
 
 核心实现位于：
 
@@ -113,5 +120,7 @@ ctest --test-dir clients/Gluttony/build/<kit-build-directory> `
 python -m unittest discover -s tests -v
 ```
 
-仓储接口目前保持与 UI/推理线程解耦。接入检测流程时应通过独立持久化线程调用，
-不要让推理线程直接持有数据库写连接。
+UI 和推理线程不会直接持有数据库连接。检测任务在 SQLite 中从
+`PENDING` 转为 `PROCESSING` 后才进入推理线程；热力图完成 PNG 原子落盘并且
+结果事务提交成功后，UI 才显示该条记录。历史记录按路径从磁盘加载热力图，
+结果表不长期保存完整 `QImage`。

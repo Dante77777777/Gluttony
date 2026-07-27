@@ -147,3 +147,34 @@ InferenceOptions ParamWidget::inferenceOptions() const
     options.reviewThreshold = ui->reviewThresholdValue->value();
     return options;
 }
+
+void ParamWidget::setInferenceOptions(const InferenceOptions& options)
+{
+    const double reviewThreshold =
+        qBound(0.0, options.reviewThreshold, 0.99);
+    const double ngThreshold =
+        qBound(reviewThreshold + 0.01, options.ngThreshold, 1.0);
+    const double heatmapAlpha =
+        qBound(0.0, options.heatmapAlpha, 1.0);
+
+    const QSignalBlocker reviewSpinBlocker(ui->reviewThresholdValue);
+    const QSignalBlocker reviewSliderBlocker(ui->reviewThresholdSlider);
+    const QSignalBlocker ngSpinBlocker(ui->ngThresholdValue);
+    const QSignalBlocker ngSliderBlocker(ui->ngThresholdSlider);
+    const QSignalBlocker alphaSpinBlocker(ui->alphaValue);
+    const QSignalBlocker alphaSliderBlocker(ui->alphaSlider);
+
+    ui->reviewThresholdValue->setMaximum(ngThreshold - 0.01);
+    ui->reviewThresholdSlider->setMaximum(
+        qRound((ngThreshold - 0.01) * 100.0));
+    ui->ngThresholdValue->setMinimum(reviewThreshold + 0.01);
+    ui->ngThresholdSlider->setMinimum(
+        qRound((reviewThreshold + 0.01) * 100.0));
+
+    ui->reviewThresholdValue->setValue(reviewThreshold);
+    ui->reviewThresholdSlider->setValue(qRound(reviewThreshold * 100.0));
+    ui->ngThresholdValue->setValue(ngThreshold);
+    ui->ngThresholdSlider->setValue(qRound(ngThreshold * 100.0));
+    ui->alphaValue->setValue(heatmapAlpha);
+    ui->alphaSlider->setValue(qRound(heatmapAlpha * 100.0));
+}

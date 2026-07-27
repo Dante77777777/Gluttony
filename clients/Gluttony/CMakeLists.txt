@@ -38,6 +38,8 @@ qt_add_executable(Gluttony
     DataBase/InspectionRunRepository.cpp
     DataBase/InspectionItemRepository.h
     DataBase/InspectionItemRepository.cpp
+    DataBase/PersistenceWorker.h
+    DataBase/PersistenceWorker.cpp
 
     DetectionResult/DetectionResult.h
     DetectionResult/DetectionResult.cpp
@@ -82,12 +84,6 @@ qt_add_executable(Gluttony
     Inference/InferenceEngine.h
     Inference/InferenceEngine.cpp
 
-    Utils/ImageQueue.h
-    Utils/ImageQueue.cpp
-    Utils/ImageConversion.h
-
-    Workers/ImageProducer.h
-    Workers/ImageProducer.cpp
     Workers/ImageWorker.h
     Workers/ImageWorker.cpp
 )
@@ -182,6 +178,68 @@ set(RESOURCE resources/resources.qrc)
 set(OpenVINO_DIR "D:/Anaconda/Lib/site-packages/openvino/cmake")
 
 find_package(OpenVINO REQUIRED COMPONENTS Runtime)
+
+if(BUILD_TESTING)
+    qt_add_executable(GluttonyPersistenceWorkerSmoke
+        tests/PersistenceWorkerSmoke.cpp
+        DataBase/DataBaseConnection.h
+        DataBase/DataBaseConnection.cpp
+        DataBase/MigrationCatalog.h
+        DataBase/MigrationCatalog.cpp
+        DataBase/MigrationStatementSplitter.h
+        DataBase/MigrationStatementSplitter.cpp
+        DataBase/MigrationCheckSum.h
+        DataBase/MigrationCheckSum.cpp
+        DataBase/MigrationPlanner.h
+        DataBase/MigrationPlanner.cpp
+        DataBase/MigrationExecutor.h
+        DataBase/MigrationExecutor.cpp
+        DataBase/DatabaseBootstrapper.h
+        DataBase/DatabaseBootstrapper.cpp
+        DataBase/PersistenceRecords.h
+        DataBase/SqliteTransaction.h
+        DataBase/SqliteTransaction.cpp
+        DataBase/InspectionRunRepository.h
+        DataBase/InspectionRunRepository.cpp
+        DataBase/InspectionItemRepository.h
+        DataBase/InspectionItemRepository.cpp
+        DataBase/PersistenceWorker.h
+        DataBase/PersistenceWorker.cpp
+    )
+
+    qt_add_resources(
+        GluttonyPersistenceWorkerSmoke
+        "gluttony_database_migrations_worker_smoke"
+        PREFIX
+            "/database/migrations"
+        BASE
+            "${GLUTTONY_MIGRATION_SOURCE_DIR}"
+        FILES
+            "${GLUTTONY_INITIAL_MIGRATION}"
+    )
+
+    target_include_directories(
+        GluttonyPersistenceWorkerSmoke
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+            ${OpenCV_INCLUDE_DIRS}
+    )
+
+    target_link_libraries(
+        GluttonyPersistenceWorkerSmoke
+        PRIVATE
+            Qt::Core
+            Qt::Gui
+            Qt::Sql
+            Qt::Widgets
+            openvino::runtime
+    )
+
+    add_test(
+        NAME GluttonyPersistenceWorkerSmoke
+        COMMAND GluttonyPersistenceWorkerSmoke
+    )
+endif()
 
 qt_add_resources(APP_RESOURCE ${RESOURCE})
 target_sources(Gluttony PRIVATE ${APP_RESOURCE})

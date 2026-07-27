@@ -5,19 +5,24 @@
 #include <QVector>
 #include <QString>
 #include <QColor>
-#include <QImage>
 #include <QBrush>
 #include "../Inference/InferenceEngine.h"
 
 struct DetectionRecord
 {
+    QString runId;
+    QString resultId;
+    int sequenceNo = 0;
     QString fileName;
     QString sourceFileName;
+    QString heatmapFileName;
+    QString status = QStringLiteral("SUCCESS");
     DetectionLevel detectionLevel = DetectionLevel::OK;
-    double score;
-    int inferenceMS;
-    int defectArea;
-    QImage heatmapOverlay;
+    bool hasDetectionResult = true;
+    double score = 0.0;
+    int inferenceMS = 0;
+    int defectArea = 0;
+    QString errorMessage;
 };
 
 class DetectionResultModel : public QAbstractTableModel

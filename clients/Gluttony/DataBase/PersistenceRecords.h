@@ -3,6 +3,7 @@
 
 #include <QString>
 #include <QVector>
+#include <QMetaType>
 
 #include <optional>
 
@@ -121,10 +122,65 @@ struct InspectionItemPageRow final
     std::optional<QString> errorMessage;
 };
 
+struct InspectionRunRecord final
+{
+    QString runId;
+    std::optional<QString> name;
+    std::optional<QString> note;
+    QString status;
+    QString sourceType;
+    QString sourcePath;
+    QString storagePath;
+    QString storageOrigin;
+    QString modelPath;
+    QString modelFormat;
+    QString modelHash;
+    QString appVersion;
+    double reviewThreshold = 0.0;
+    double ngThreshold = 0.0;
+    double heatmapAlpha = 0.0;
+    qint64 startedAtMs = 0;
+    std::optional<qint64> completedAtMs;
+    std::optional<qint64> savedAtMs;
+    qint64 totalCount = 0;
+    qint64 completedCount = 0;
+    qint64 failedCount = 0;
+    qint64 okCount = 0;
+    qint64 reviewCount = 0;
+    qint64 ngCount = 0;
+    double scoreSum = 0.0;
+};
+
+struct PersistedInspectionResult final
+{
+    QString resultId;
+    QString runId;
+    int sequenceNo = 0;
+    QString sourceFileName;
+    QString sourceFilePath;
+    QString detectionLevel;
+    double score = 0.0;
+    qint64 inferenceMs = 0;
+    qint64 defectArea = 0;
+    QString heatmapFilePath;
+};
+
 struct RecoveryReport final
 {
     qint64 resetItemCount = 0;
     qint64 interruptedRunCount = 0;
 };
+
+using InspectionItemRows = QVector<InspectionItemPageRow>;
+using InspectionRunRecords = QVector<InspectionRunRecord>;
+using InspectionRunHistoryRows = QVector<InspectionRunHistoryRow>;
+
+Q_DECLARE_METATYPE(ClaimedInspectionItem)
+Q_DECLARE_METATYPE(InspectionItemPageRow)
+Q_DECLARE_METATYPE(InspectionItemRows)
+Q_DECLARE_METATYPE(InspectionRunRecord)
+Q_DECLARE_METATYPE(InspectionRunRecords)
+Q_DECLARE_METATYPE(InspectionRunHistoryRows)
+Q_DECLARE_METATYPE(PersistedInspectionResult)
 
 #endif

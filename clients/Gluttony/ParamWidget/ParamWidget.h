@@ -24,6 +24,7 @@ signals:
     void sigFolderSelected(const QString& folderPath);
 public:
     InferenceOptions inferenceOptions() const;
+    void setInferenceOptions(const InferenceOptions& options);
 public slots:
     void onSelectImageButtonClicked();
     void onSelectFolderButtonClicked();

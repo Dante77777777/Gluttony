@@ -1,34 +1,40 @@
 #ifndef IMAGEWORKER_H
 #define IMAGEWORKER_H
 
-#include <QStringList>
 #include <QObject>
-#include <memory>
 
-#include "../Utils/ImageQueue.h"
+#include "../DataBase/PersistenceRecords.h"
 #include "../Inference/InferenceEngine.h"
-#include "../Utils/ImageConversion.h"
 
 class ImageWorker : public QObject
 {
     Q_OBJECT
 
 public:
-    explicit ImageWorker(std::shared_ptr<ImageQueue> queue, const QString& modelPath, const InferenceOptions& options, QObject* parent = nullptr);
+    explicit ImageWorker(
+        QString modelPath,
+        InferenceOptions options,
+        QObject* parent = nullptr);
 
 public slots:
-    void run();
+    void initialize();
+    void processItem(const ClaimedInspectionItem& item);
 
 signals:
-    void sigTaskFinished(const QString& filePath, const QImage& sourceImage, const InferenceResult& result);
-    void sigFinished();
-    void sigTaskFailed(const QString& filePath, const QString& errorMessage);
-    void sigPaused();
+    void sigReady();
+    void sigInitializationFailed(const QString& errorMessage);
+    void sigTaskFinished(
+        const ClaimedInspectionItem& item,
+        const InferenceResult& result);
+    void sigTaskFailed(
+        const ClaimedInspectionItem& item,
+        const QString& errorMessage);
+
 private:
     QString modelPath_;
-    std::shared_ptr<ImageQueue> queue_;
     InferenceEngine inferenceEngine_;
     InferenceOptions options_;
+    bool ready_ = false;
 };
 
 

@@ -104,6 +104,7 @@ InspectionItemRepository::claimNextPending(
     }
 
     ClaimedInspectionItem item;
+    item.runId = runId;
 
     {
         QSqlQuery query(database);

@@ -13,6 +13,9 @@ public:
     QAction* openFolderAction;
     QAction* startAction;
     QAction* stopAction;
+    QAction* saveBatchAction;
+    QAction* discardBatchAction;
+    QAction* batchManagerAction;
     QAction* zoomInAction;
     QAction* zoomOutAction;
     QAction* fitAction;
@@ -32,10 +35,19 @@ public:
 
         openImageAction = new QAction(QIcon(":/file-image.png"),"Open Image",parent);
         openFolderAction = new QAction(QIcon(":/folder-open.png"),"Open Folder",parent);
-        startAction = new QAction(QIcon(":/play.png"),"Strat",parent);
+        startAction = new QAction(QIcon(":/play.png"),"Start",parent);
         startAction->setEnabled(false);
         stopAction = new QAction(QIcon(":/stop.png"),"Stop",parent);
         stopAction->setEnabled(false);
+        saveBatchAction =
+            new QAction(QIcon(":/save.png"), "Save Batch", parent);
+        saveBatchAction->setEnabled(false);
+        discardBatchAction =
+            new QAction(QIcon(":/stop.png"), "Discard Draft", parent);
+        discardBatchAction->setEnabled(false);
+        batchManagerAction =
+            new QAction(QIcon(":/refer.png"), "Batches", parent);
+        batchManagerAction->setEnabled(false);
         zoomInAction = new QAction(QIcon(":/zoom in.png"),"Zoom In",parent);
         zoomOutAction = new QAction(QIcon(":/zoom out.png"),"Zoom Out",parent);
         fitAction = new QAction(QIcon(":/scale-up.png"),"Fit",parent);
@@ -50,6 +62,11 @@ public:
 
         topToolBar->addAction(startAction);
         topToolBar->addAction(stopAction);
+        topToolBar->addSeparator();
+
+        topToolBar->addAction(saveBatchAction);
+        topToolBar->addAction(discardBatchAction);
+        topToolBar->addAction(batchManagerAction);
         topToolBar->addSeparator();
 
         topToolBar->addAction(zoomInAction);

@@ -26,6 +26,8 @@ int main(int argc, char *argv[])
     LogMessage::getInstance().installMessageHandler();
     QCoreApplication::setApplicationName(
         QStringLiteral("Gluttony"));
+    QCoreApplication::setApplicationVersion(
+        QStringLiteral("0.2.0"));
 
     // 2. 确定数据库文件和受管理批次目录，并确保基础目录存在。
     QString DBErrorMessage;
@@ -157,10 +159,19 @@ int main(int argc, char *argv[])
     QDEBUG(QString("Managed Runs Root: %1").arg(QDir::toNativeSeparators(dataBasePaths->managedRunsRoot())));
 
     // 6. 数据库启动检查完成后再创建并显示主窗口。
-    MainWindow w;
-    applyQSS();
-
     qRegisterMetaType<InferenceResult>("InferenceResult");
+    qRegisterMetaType<ClaimedInspectionItem>("ClaimedInspectionItem");
+    qRegisterMetaType<InspectionItemPageRow>("InspectionItemPageRow");
+    qRegisterMetaType<InspectionItemRows>("InspectionItemRows");
+    qRegisterMetaType<InspectionRunRecord>("InspectionRunRecord");
+    qRegisterMetaType<InspectionRunRecords>("InspectionRunRecords");
+    qRegisterMetaType<PersistedInspectionResult>(
+        "PersistedInspectionResult");
+
+    MainWindow w(
+        dataBasePaths->dataBaseFilePath(),
+        dataBasePaths->managedRunsRoot());
+    applyQSS();
     w.show();
     return a.exec();
 }

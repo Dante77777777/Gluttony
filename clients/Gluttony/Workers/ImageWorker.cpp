@@ -1,61 +1,58 @@
 #include "ImageWorker.h"
 
-ImageWorker::ImageWorker(std::shared_ptr<ImageQueue> queue, const QString& modelPath, const InferenceOptions& options, QObject* parent)
+ImageWorker::ImageWorker(
+    QString modelPath,
+    InferenceOptions options,
+    QObject* parent)
     : QObject(parent)
-    , queue_(std::move(queue))
-    , modelPath_(modelPath)
+    , modelPath_(std::move(modelPath))
     , options_(options)
 {
-
 }
 
-void ImageWorker::run()
+void ImageWorker::initialize()
 {
     QString errorMessage;
     if(!inferenceEngine_.loadModel(modelPath_,&errorMessage))
     {
-        emit sigTaskFailed(modelPath_,errorMessage);
-        emit sigFinished();
+        emit sigInitializationFailed(errorMessage);
         return ;
     }
 
-    while(true)
+    ready_ = true;
+    emit sigReady();
+}
+
+void ImageWorker::processItem(const ClaimedInspectionItem& item)
+{
+    if (!ready_)
     {
-        if(queue_->isPaused())
-        {
-            emit sigPaused();
-            if(!queue_->waitForResume())
-            {
-                break;
-            }
-        }
-        ImageTask task;
-        if(!queue_->pop(task,0))
-        {
-            break;
-        }
-
-        if(task.isEnd)
-        {
-            break;
-        }
-
-        const QImage sourceImage = ImageConver::cvMat2QImage(task.image);
-        if(sourceImage.isNull())
-        {
-            emit sigTaskFailed(task.filePath, "Failed to Convert cv::Mat to QImage.");
-            continue;
-        }
-
-        InferenceResult result;
-        if(!inferenceEngine_.inferImage(sourceImage,options_,&result,&errorMessage))
-        {
-            emit sigTaskFailed(task.filePath,errorMessage);
-            continue ;
-        }
-
-        emit sigTaskFinished(task.filePath,sourceImage,result);
+        emit sigTaskFailed(
+            item,
+            QStringLiteral("Inference Worker is not Ready."));
+        return;
     }
 
-    emit sigFinished();
+    const QImage sourceImage(item.sourceFilePath);
+    if (sourceImage.isNull())
+    {
+        emit sigTaskFailed(
+            item,
+            QStringLiteral("Failed to Load Source Image."));
+        return;
+    }
+
+    QString errorMessage;
+    InferenceResult result;
+    if (!inferenceEngine_.inferImage(
+            sourceImage,
+            options_,
+            &result,
+            &errorMessage))
+    {
+        emit sigTaskFailed(item, errorMessage);
+        return;
+    }
+
+    emit sigTaskFinished(item, result);
 }

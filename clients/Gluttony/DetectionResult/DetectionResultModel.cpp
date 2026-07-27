@@ -34,6 +34,24 @@ QColor levelColor(DetectionLevel level)
     return QColor("#1f2937");
 }
 
+QString recordStatusText(const DetectionRecord& record)
+{
+    if (!record.hasDetectionResult)
+    {
+        return QStringLiteral("● FAILED");
+    }
+    return levelText(record.detectionLevel);
+}
+
+QColor recordStatusColor(const DetectionRecord& record)
+{
+    if (!record.hasDetectionResult)
+    {
+        return QColor(QStringLiteral("#6b7280"));
+    }
+    return levelColor(record.detectionLevel);
+}
+
 }
 
 
@@ -78,23 +96,29 @@ QVariant DetectionResultModel::data(const QModelIndex& index, int role) const
             return record.fileName;
             break;
         case 1:
-            return LevelConver::levelText(record.detectionLevel);
+            return LevelConver::recordStatusText(record);
             break;
         case 2:
-            return QString::number(record.score,'f',3);
+            return record.hasDetectionResult
+                       ? QString::number(record.score, 'f', 3)
+                       : QStringLiteral("-");
             break;
         case 3:
-            return QString("%1ms").arg(record.inferenceMS);
+            return record.hasDetectionResult
+                       ? QStringLiteral("%1ms").arg(record.inferenceMS)
+                       : QStringLiteral("-");
             break;
         case 4:
-            return QString("%1px").arg(record.defectArea);
+            return record.hasDetectionResult
+                       ? QStringLiteral("%1px").arg(record.defectArea)
+                       : QStringLiteral("-");
             break;
         }
     }
 
     if(role == Qt::ForegroundRole && (index.column() == 1 || index.column() == 0))
     {
-        return QBrush(LevelConver::levelColor(record.detectionLevel));
+        return QBrush(LevelConver::recordStatusColor(record));
     }
 
     if(role == Qt::TextAlignmentRole)
@@ -148,7 +172,7 @@ void DetectionResultModel::clear()
 
 bool DetectionResultModel::recordAt(int row, DetectionRecord& record) const
 {
-    if(row < 0 || row > records.size())
+    if(row < 0 || row >= records.size())
     {
         return false;
     }
