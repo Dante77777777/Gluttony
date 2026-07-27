@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 3.19)
 project(Gluttony LANGUAGES CXX)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets)
+include(CTest)
+
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Sql)
 find_package(OpenCV 4.12.0 REQUIRED COMPONENTS core imgproc highgui)
 
 qt_standard_project_setup()
@@ -12,6 +14,30 @@ qt_add_executable(Gluttony
     mainwindow.cpp
     mainwindow.h
     resources/resources.qrc
+
+    DataBase/DataBasePaths.h
+    DataBase/DataBasePaths.cpp
+    DataBase/DataBaseConnection.h
+    DataBase/DataBaseConnection.cpp
+    DataBase/MigrationCatalog.h
+    DataBase/MigrationCatalog.cpp
+    DataBase/MigrationStatementSplitter.h
+    DataBase/MigrationStatementSplitter.cpp
+    DataBase/MigrationCheckSum.h
+    DataBase/MigrationCheckSum.cpp
+    DataBase/MigrationPlanner.h
+    DataBase/MigrationPlanner.cpp
+    DataBase/MigrationExecutor.h
+    DataBase/MigrationExecutor.cpp
+    DataBase/DatabaseBootstrapper.h
+    DataBase/DatabaseBootstrapper.cpp
+    DataBase/PersistenceRecords.h
+    DataBase/SqliteTransaction.h
+    DataBase/SqliteTransaction.cpp
+    DataBase/InspectionRunRepository.h
+    DataBase/InspectionRunRepository.cpp
+    DataBase/InspectionItemRepository.h
+    DataBase/InspectionItemRepository.cpp
 
     DetectionResult/DetectionResult.h
     DetectionResult/DetectionResult.cpp
@@ -66,6 +92,92 @@ qt_add_executable(Gluttony
     Workers/ImageWorker.cpp
 )
 
+get_filename_component(
+    GLUTTONY_MIGRATION_SOURCE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../database/migrations"
+    ABSOLUTE
+)
+
+set(
+    GLUTTONY_INITIAL_MIGRATION
+    "${GLUTTONY_MIGRATION_SOURCE_DIR}/001_initial_schema.sql"
+)
+
+if(NOT EXISTS "${GLUTTONY_INITIAL_MIGRATION}")
+    message(
+        FATAL_ERROR
+        "Required database migration was not found: "
+        "${GLUTTONY_INITIAL_MIGRATION}"
+    )
+endif()
+
+qt_add_resources(
+    Gluttony
+    "gluttony_database_migrations"
+    PREFIX
+        "/database/migrations"
+    BASE
+        "${GLUTTONY_MIGRATION_SOURCE_DIR}"
+    FILES
+        "${GLUTTONY_INITIAL_MIGRATION}"
+)
+
+if(BUILD_TESTING)
+    qt_add_executable(GluttonyPersistenceSmoke
+        tests/PersistenceSmoke.cpp
+        DataBase/DataBaseConnection.h
+        DataBase/DataBaseConnection.cpp
+        DataBase/MigrationCatalog.h
+        DataBase/MigrationCatalog.cpp
+        DataBase/MigrationStatementSplitter.h
+        DataBase/MigrationStatementSplitter.cpp
+        DataBase/MigrationCheckSum.h
+        DataBase/MigrationCheckSum.cpp
+        DataBase/MigrationPlanner.h
+        DataBase/MigrationPlanner.cpp
+        DataBase/MigrationExecutor.h
+        DataBase/MigrationExecutor.cpp
+        DataBase/DatabaseBootstrapper.h
+        DataBase/DatabaseBootstrapper.cpp
+        DataBase/PersistenceRecords.h
+        DataBase/SqliteTransaction.h
+        DataBase/SqliteTransaction.cpp
+        DataBase/InspectionRunRepository.h
+        DataBase/InspectionRunRepository.cpp
+        DataBase/InspectionItemRepository.h
+        DataBase/InspectionItemRepository.cpp
+    )
+
+    qt_add_resources(
+        GluttonyPersistenceSmoke
+        "gluttony_database_migrations_smoke"
+        PREFIX
+            "/database/migrations"
+        BASE
+            "${GLUTTONY_MIGRATION_SOURCE_DIR}"
+        FILES
+            "${GLUTTONY_INITIAL_MIGRATION}"
+    )
+
+    target_link_libraries(
+        GluttonyPersistenceSmoke
+        PRIVATE
+            Qt::Core
+            Qt::Sql
+    )
+
+    target_include_directories(
+        GluttonyPersistenceSmoke
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    add_test(
+        NAME GluttonyPersistenceSmoke
+        COMMAND GluttonyPersistenceSmoke
+    )
+endif()
+
 set(RESOURCE resources/resources.qrc)
 set(OpenVINO_DIR "D:/Anaconda/Lib/site-packages/openvino/cmake")
 
@@ -87,6 +199,7 @@ target_link_libraries(Gluttony
     PRIVATE
         Qt::Core
         Qt::Widgets
+        Qt::Sql
         openvino::runtime
 )
 
