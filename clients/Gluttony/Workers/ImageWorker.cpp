@@ -1,9 +1,10 @@
 #include "ImageWorker.h"
 
-ImageWorker::ImageWorker(std::shared_ptr<ImageQueue> queue, const QString& modelPath, QObject* parent)
+ImageWorker::ImageWorker(std::shared_ptr<ImageQueue> queue, const QString& modelPath, const InferenceOptions& options, QObject* parent)
     : QObject(parent)
     , queue_(std::move(queue))
     , modelPath_(modelPath)
+    , options_(options)
 {
 
 }
@@ -47,7 +48,7 @@ void ImageWorker::run()
         }
 
         InferenceResult result;
-        if(!inferenceEngine_.inferImage(sourceImage,&result,&errorMessage))
+        if(!inferenceEngine_.inferImage(sourceImage,options_,&result,&errorMessage))
         {
             emit sigTaskFailed(task.filePath,errorMessage);
             continue ;

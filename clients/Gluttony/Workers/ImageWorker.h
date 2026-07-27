@@ -14,7 +14,7 @@ class ImageWorker : public QObject
     Q_OBJECT
 
 public:
-    explicit ImageWorker(std::shared_ptr<ImageQueue> queue, const QString& modelPath, QObject* parent = nullptr);
+    explicit ImageWorker(std::shared_ptr<ImageQueue> queue, const QString& modelPath, const InferenceOptions& options, QObject* parent = nullptr);
 
 public slots:
     void run();
@@ -28,6 +28,7 @@ private:
     QString modelPath_;
     std::shared_ptr<ImageQueue> queue_;
     InferenceEngine inferenceEngine_;
+    InferenceOptions options_;
 };
 
 

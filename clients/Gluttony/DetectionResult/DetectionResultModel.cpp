@@ -1,5 +1,43 @@
 #include "DetectionResultModel.h"
 
+namespace LevelConver {
+
+QString levelText(DetectionLevel level)
+{
+    switch (level) {
+    case DetectionLevel::OK:
+        return "● OK";
+        break;
+    case DetectionLevel::REVIEW:
+        return "● REVIEW";
+        break;
+    case DetectionLevel::NG:
+        return "● NG";
+        break;
+    }
+    return {};
+}
+
+QColor levelColor(DetectionLevel level)
+{
+    switch (level) {
+    case DetectionLevel::OK:
+        return QColor("#16a34a");
+
+    case DetectionLevel::REVIEW:
+        return QColor("#d97706");
+
+    case DetectionLevel::NG:
+        return QColor("#dc2626");
+    }
+
+    return QColor("#1f2937");
+}
+
+}
+
+
+
 DetectionResultModel::DetectionResultModel(QObject* parent)
     : QAbstractTableModel(parent)
     , records(0)
@@ -40,7 +78,7 @@ QVariant DetectionResultModel::data(const QModelIndex& index, int role) const
             return record.fileName;
             break;
         case 1:
-            return record.isNG ? "● NG" : "● OK";
+            return LevelConver::levelText(record.detectionLevel);
             break;
         case 2:
             return QString::number(record.score,'f',3);
@@ -56,7 +94,7 @@ QVariant DetectionResultModel::data(const QModelIndex& index, int role) const
 
     if(role == Qt::ForegroundRole && (index.column() == 1 || index.column() == 0))
     {
-        return QBrush(record.isNG ? QColor("#dc2626") : QColor("#16a34a"));
+        return QBrush(LevelConver::levelColor(record.detectionLevel));
     }
 
     if(role == Qt::TextAlignmentRole)

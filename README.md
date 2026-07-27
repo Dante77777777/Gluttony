@@ -105,13 +105,21 @@ python scripts/evaluate.py
 python scripts/export_model.py --format openvino
 ```
 
-导出的 OpenVINO/ONNX 模型用于后续 C++/Qt 客户端加载推理。
+导出的 OpenVINO/ONNX 模型可由 C++/Qt 客户端通过 OpenVINO Runtime 直接加载推理。
 
-导出后可以先用 Python 验证 OpenVINO 模型能否加载：
+导出后可以先用 Python 验证模型能否被 OpenVINO Runtime 加载：
 
 ```powershell
 python scripts/verify_openvino_export.py --model outputs/patchcore_mvtec/bottle/weights/openvino/model.xml
+python scripts/verify_openvino_export.py --model outputs/patchcore_mvtec/bottle/weights/onnx/model.onnx
 ```
+
+Qt 客户端的 “Load Model” 文件选择器同时支持：
+
+- OpenVINO IR：`*.xml`（同目录需保留对应的 `*.bin`）
+- ONNX：`*.onnx`
+
+ONNX 仍由现有的 OpenVINO Runtime 执行，因此客户端无需再链接 ONNX Runtime。
 
 ## 学习路线
 

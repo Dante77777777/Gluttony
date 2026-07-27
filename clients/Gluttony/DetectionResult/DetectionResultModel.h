@@ -7,12 +7,13 @@
 #include <QColor>
 #include <QImage>
 #include <QBrush>
+#include "../Inference/InferenceEngine.h"
 
 struct DetectionRecord
 {
     QString fileName;
     QString sourceFileName;
-    bool isNG;
+    DetectionLevel detectionLevel = DetectionLevel::OK;
     double score;
     int inferenceMS;
     int defectArea;

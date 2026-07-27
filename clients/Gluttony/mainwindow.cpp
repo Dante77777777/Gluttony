@@ -99,19 +99,19 @@ void MainWindow::setupUI()
 }
 
 
-void MainWindow::onModelSelected(const QString& xmlPath)
+void MainWindow::onModelSelected(const QString& modelPath)
 {
     QString errorMessage;
 
-    if (!inferenceEngine.loadModel(xmlPath, &errorMessage)) {
+    if (!inferenceEngine.loadModel(modelPath, &errorMessage)) {
         QWARNING(errorMessage);
         QMessageBox::critical(this, "Model Loading Failed", errorMessage);
         return;
     }
 
-    loadedModelPath = xmlPath;
+    loadedModelPath = modelPath;
 
-    QDEBUG(QString("Model loaded successfully: %1").arg(xmlPath));
+    QDEBUG(QString("Model loaded successfully: %1").arg(modelPath));
     QDEBUG("Device: CPU");
 
     // 将模型端口信息写到 LogWidget。
@@ -181,7 +181,7 @@ void MainWindow::onStartActionTriggered()
 
     if(!inferenceEngine.isLoaded())
     {
-        const QString message = "Please Load an OpenVINO Model Before Starting Inference.";
+        const QString message = "Please Load an OpenVINO IR or ONNX Model Before Starting Inference.";
         QWARNING(message);
         QMessageBox::warning(this,"Model Not Loaded",message);
         return ;
@@ -248,7 +248,7 @@ void MainWindow::onTaskFinished(const QString& filePath, const QImage& sourceIma
     viewWidget->ui->resultGV->setImage(result.heatmapOverlay);
 
     // 右侧当前结果。
-    quickResWidget->ui->setNG(result.isNg, result.score);
+    quickResWidget->ui->setNG(result.detectionLevel, result.score);
     quickResWidget->ui->setMetrics(
         result.inferenceMs,
         result.defectArea
@@ -257,7 +257,7 @@ void MainWindow::onTaskFinished(const QString& filePath, const QImage& sourceIma
     // 表格增加一行。
     DetectionRecord record;
     record.fileName = QString("%1/%2").arg(QFileInfo(filePath).dir().dirName()).arg(QFileInfo(filePath).fileName());
-    record.isNG = result.isNg;
+    record.detectionLevel = result.detectionLevel;
     record.score = result.score;
     record.inferenceMS = result.inferenceMs;
     record.defectArea = result.defectArea;
@@ -266,24 +266,34 @@ void MainWindow::onTaskFinished(const QString& filePath, const QImage& sourceIma
 
     DRWidget->model->appendResult(record);
 
+    QString logDetectionLevelText;
+    if(result.detectionLevel == DetectionLevel::NG)
+    {
+        ngImageCount++;
+        logDetectionLevelText = "NG";
+    }
+    else if(result.detectionLevel == DetectionLevel::REVIEW)
+    {
+        reviewImageCount++;
+        logDetectionLevelText = "REVIEW";
+    }
+    else
+    {
+        okImageCount++;
+        logDetectionLevelText = "OK";
+    }
+
     QDEBUG(
         QString("Inference completed | File: %1 | Result: %2 | "
                 "Score: %3 | Time: %4 ms | Defect Area: %5 px")
             .arg(filePath)
-            .arg(result.isNg ? "NG" : "OK")
+            .arg(logDetectionLevelText)
             .arg(result.score, 0, 'f', 4)
             .arg(result.inferenceMs)
             .arg(result.defectArea)
         );
 
-    if(result.isNg)
-    {
-        ngImageCount++;
-    }
-    else
-    {
-        okImageCount++;
-    }
+
     totalScore += result.score;
     refreshStatusBar(QString("Detecting: %1/%2").arg(completedImageCount).arg(totalImageCount));
 }
@@ -324,7 +334,8 @@ void MainWindow::startWorkers()
     inferenceThread = new QThread(this);
 
     imageProducer = new ImageProducer(imageQueue);
-    imageWorker = new ImageWorker(imageQueue,loadedModelPath);
+    const InferenceOptions options = paramWidget->inferenceOptions();
+    imageWorker = new ImageWorker(imageQueue, loadedModelPath, options);
 
     imageProducer->moveToThread(producerThread);
     imageWorker->moveToThread(inferenceThread);
@@ -433,6 +444,6 @@ void MainWindow::onRecordClicked(const DetectionRecord& record)
         viewWidget->ui->resultGV->setImage(record.heatmapOverlay);
     }
 
-    quickResWidget->ui->setNG(record.isNG,record.score);
+    quickResWidget->ui->setNG(record.detectionLevel,record.score);
     quickResWidget->ui->setMetrics(record.inferenceMS,record.defectArea);
 }

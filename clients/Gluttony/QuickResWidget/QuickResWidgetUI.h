@@ -3,6 +3,7 @@
 #include <QFrame>
 #include <QLabel>
 #include <QPixmap>
+#include "../Inference/InferenceEngine.h"
 
 
 class QuickResWidgetUI
@@ -86,11 +87,29 @@ public:
 
     }
 
-    void setNG(bool isNG,double score)
+    void setNG(DetectionLevel level,double score)
     {
-        const QString color = isNG ? "#dc2626" : "#16a34a";
+        QString color;
+        QString resultText;
 
-        resultValueLabel->setText(isNG ? "NG" : "OK");
+        switch (level) {
+        case DetectionLevel::OK:
+            resultText = "OK";
+            color = "#16a34a";
+            break;
+
+        case DetectionLevel::REVIEW:
+            resultText = "REVIEW";
+            color = "#d97706";
+            break;
+
+        case DetectionLevel::NG:
+            resultText = "NG";
+            color = "#dc2626";
+            break;
+        }
+
+        resultValueLabel->setText(resultText);
         resultValueLabel->setStyleSheet(
             QString("color: %1; font-size: 28px; font-weight: 800;")
                 .arg(color)

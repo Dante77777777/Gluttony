@@ -24,16 +24,24 @@ public:
     QHBoxLayout* buttonsLayout;
 
     QLabel* paramsLabel;
-    QLabel* threshold;
-    QDoubleSpinBox* thresholdValue;
-    QSlider* thresholdSlider;
+
+    QLabel* reviewThreshold;
+    QDoubleSpinBox* reviewThresholdValue;
+    QSlider* reviewThresholdSlider;
+
+    QLabel* ngThreshold;
+    QDoubleSpinBox* ngThresholdValue;
+    QSlider* ngThresholdSlider;
+
     QLabel* alpha;
     QDoubleSpinBox* alphaValue;
     QSlider* alphaSlider;
     QLabel* deviceLabel;
     QComboBox* device;
+
     QVBoxLayout* paramsLayout;
-    QHBoxLayout* thresholdLayout;
+    QHBoxLayout* reviewThresholdLayout;
+    QHBoxLayout* ngThresholdLayout;
     QHBoxLayout* alphaLayout;
 
     void setupUI(QWidget* parent)
@@ -74,39 +82,72 @@ public:
 
         paramsLabel = new QLabel("Parameters");
         paramsLabel->setObjectName("SectionLabel");
-        threshold = new QLabel("Threshold");
-        thresholdValue = new QDoubleSpinBox();
-        thresholdSlider = new QSlider();
-        thresholdSlider->setOrientation(Qt::Horizontal);
+        reviewThreshold = new QLabel("Review Threshold");
+        reviewThresholdValue = new QDoubleSpinBox();
+        reviewThresholdSlider = new QSlider(Qt::Horizontal);
+
+        ngThreshold = new QLabel("NG Threshold");
+        ngThresholdValue = new QDoubleSpinBox();
+        ngThresholdSlider = new QSlider(Qt::Horizontal);
+
         alpha = new QLabel("Heatmap Alpha");
         alphaValue = new QDoubleSpinBox();
-        alphaSlider = new QSlider();
-        alphaSlider->setOrientation(Qt::Horizontal);
+        alphaSlider = new QSlider(Qt::Horizontal);
+
+        reviewThresholdValue->setRange(0.00, 0.99);
+        reviewThresholdValue->setDecimals(2);
+        reviewThresholdValue->setSingleStep(0.01);
+        reviewThresholdValue->setValue(0.45);
+        reviewThresholdSlider->setRange(0, 99);
+        reviewThresholdSlider->setValue(45);
+
+        ngThresholdValue->setRange(0.01, 1.00);
+        ngThresholdValue->setDecimals(2);
+        ngThresholdValue->setSingleStep(0.01);
+        ngThresholdValue->setValue(0.60);
+        ngThresholdSlider->setRange(1, 100);
+        ngThresholdSlider->setValue(60);
+
+        alphaValue->setRange(0.00, 1.00);
+        alphaValue->setDecimals(2);
+        alphaValue->setSingleStep(0.01);
+        alphaValue->setValue(0.55);
+        alphaSlider->setRange(0, 100);
+        alphaSlider->setValue(55);
+
         deviceLabel = new QLabel("Device");
         device = new QComboBox();
         device->addItem("CPU");
         paramsLayout = new QVBoxLayout();
         paramsLayout->setContentsMargins(0, 0, 0, 0);
         paramsLayout->setSpacing(8);
-        thresholdLayout = new QHBoxLayout();
-        thresholdLayout->setContentsMargins(0, 0, 0, 0);
-        thresholdLayout->setSpacing(8);
+        reviewThresholdLayout = new QHBoxLayout();
+        reviewThresholdLayout->setContentsMargins(0, 0, 0, 0);
+        reviewThresholdLayout->setSpacing(8);
+        ngThresholdLayout = new QHBoxLayout();
+        ngThresholdLayout->setContentsMargins(0, 0, 0, 0);
+        ngThresholdLayout->setSpacing(8);
         alphaLayout = new QHBoxLayout();
         alphaLayout->setContentsMargins(0, 0, 0, 0);
         alphaLayout->setSpacing(8);
 
-        thresholdLayout->addWidget(threshold);
-        thresholdLayout->addWidget(thresholdValue);
+        reviewThresholdLayout->addWidget(reviewThreshold);
+        reviewThresholdLayout->addWidget(reviewThresholdValue);
+        ngThresholdLayout->addWidget(ngThreshold);
+        ngThresholdLayout->addWidget(ngThresholdValue);
         alphaLayout->addWidget(alpha);
         alphaLayout->addWidget(alphaValue);
         paramsLayout->addWidget(paramsLabel);
-        paramsLayout->addLayout(thresholdLayout);
-        paramsLayout->addWidget(thresholdSlider);
+        paramsLayout->addLayout(reviewThresholdLayout);
+        paramsLayout->addWidget(reviewThresholdSlider);
+        paramsLayout->addLayout(ngThresholdLayout);
+        paramsLayout->addWidget(ngThresholdSlider);
         paramsLayout->addLayout(alphaLayout);
         paramsLayout->addWidget(alphaSlider);
         paramsLayout->addWidget(deviceLabel);
         paramsLayout->addWidget(device);
-        thresholdValue->setButtonSymbols(QAbstractSpinBox::NoButtons);
+        reviewThresholdValue->setButtonSymbols(QAbstractSpinBox::NoButtons);
+        ngThresholdValue->setButtonSymbols(QAbstractSpinBox::NoButtons);
         alphaValue->setButtonSymbols(QAbstractSpinBox::NoButtons);
 
         QFrame* separator = new QFrame();

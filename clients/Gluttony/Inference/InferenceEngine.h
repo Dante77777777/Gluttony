@@ -11,9 +11,23 @@
 #include "opencv2/opencv.hpp"
 #include "../LogWidget/LogMessage.h"
 
+enum class DetectionLevel
+{
+    OK,
+    REVIEW,
+    NG
+};
+
+struct InferenceOptions
+{
+    double reviewThreshold = 0.45;
+    double ngThreshold = 0.60;
+    double heatmapAlpha = 0.55;
+};
+
 struct InferenceResult
 {
-    bool isNg = false;
+    DetectionLevel detectionLevel = DetectionLevel::OK;
     float score = 0.0F;
     int inferenceMs = 0;
 
@@ -21,13 +35,14 @@ struct InferenceResult
     int defectArea = 0;
 };
 
+Q_DECLARE_METATYPE(InferenceResult)
 
 class InferenceEngine
 {
 public:
-    bool loadModel(const QString& xmlPath, QString* errorMessage = nullptr);
+    bool loadModel(const QString& modelPath, QString* errorMessage = nullptr);
     bool isLoaded() const;
-    bool inferImage(const QImage& image, InferenceResult* result, QString* errorMessage = nullptr);
+    bool inferImage(const QImage& image, const InferenceOptions& options, InferenceResult* result, QString* errorMessage = nullptr);
     QString modelPath() const;
 
     QStringList inputDescriptions() const;
@@ -38,6 +53,8 @@ private:
     std::shared_ptr<ov::Model> model;
     ov::CompiledModel compiledModel;
     QString loadedModelPath;
+    int inputWidth = 0;
+    int inputHeight = 0;
 };
 
 

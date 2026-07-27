@@ -5,7 +5,9 @@ from pathlib import Path
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Load an exported OpenVINO model to verify deployment readiness.")
+    parser = argparse.ArgumentParser(
+        description="Use OpenVINO Runtime to verify an exported OpenVINO IR or ONNX model."
+    )
     parser.add_argument("--model", required=True, help="Path to exported .xml or .onnx model.")
     parser.add_argument("--device", default="CPU", help="OpenVINO device name, for example CPU.")
     return parser.parse_args()
@@ -26,7 +28,7 @@ def main() -> None:
     model = core.read_model(model_path)
     compiled_model = core.compile_model(model, args.device)
 
-    print(f"OpenVINO model loaded: {model_path}")
+    print(f"Model loaded by OpenVINO Runtime: {model_path}")
     print(f"Device: {args.device}")
     print("Inputs:")
     for input_port in compiled_model.inputs:

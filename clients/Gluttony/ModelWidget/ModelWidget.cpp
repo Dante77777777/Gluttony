@@ -30,15 +30,18 @@ void ModelWidget::onSelectModelButtonClicked()
 {
     QString currentDir = QDir::currentPath();
 
-    QString xmlModelPath = QFileDialog::getOpenFileName(this,"Select OpenVINO XML",currentDir,"OpenVINO Model (*.xml)");
+    const QString modelPath = QFileDialog::getOpenFileName(
+        this,
+        "Select Model",
+        currentDir,
+        "Supported Models (*.xml *.onnx);;OpenVINO IR (*.xml);;ONNX Model (*.onnx)"
+        );
 
-    if(xmlModelPath.isEmpty())
+    if(modelPath.isEmpty())
     {
-        QMessageBox::critical(this,"Error","Slected Model Path is Empty!");
-        QCRITICAL("Slected Model Path is Empty!");
         return ;
     }
-    ui->models->addItem(QFileInfo(xmlModelPath).fileName(),xmlModelPath);
-    QDEBUG("Model is Selected Sucessfully!");
-    emit sigModelSelect(xmlModelPath);
+    ui->models->addItem(QFileInfo(modelPath).fileName(),modelPath);
+    QDEBUG("Model is Selected Successfully!");
+    emit sigModelSelect(modelPath);
 }

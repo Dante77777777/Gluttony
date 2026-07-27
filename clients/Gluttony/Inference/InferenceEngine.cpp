@@ -1,8 +1,9 @@
 #include "InferenceEngine.h"
+#include <algorithm>
 #include <QFileInfo>
 
 namespace AssistFunc{
-QImage createHeatmapOverlay(const QImage& sourceImage, const float* anomalyData, int mapWidth, int mapHeight, float alpha = 0.55f)
+QImage createHeatmapOverlay(const QImage& sourceImage, const float* anomalyData, int mapWidth, int mapHeight, float alpha)
 {
     if(sourceImage.isNull() || anomalyData == nullptr)
     {
@@ -68,42 +69,72 @@ int calulateDefectArea(const QImage& sourceImage, const bool* maskData, int mask
 
 
 
-bool InferenceEngine::loadModel(const QString& xmlPath, QString* errorMessage)
+bool InferenceEngine::loadModel(const QString& modelPath, QString* errorMessage)
 {
     if(errorMessage != nullptr)
     {
         errorMessage->clear();
     }
 
-    const QFileInfo fileInfo(xmlPath);
+    const QFileInfo fileInfo(modelPath);
 
-    if(!fileInfo.exists())
+    if(!fileInfo.exists() || !fileInfo.isFile())
     {
         if(errorMessage != nullptr)
         {
-            *errorMessage = "Model XML File Does Not Exist:\n" + xmlPath;
+            *errorMessage = "Model File Does Not Exist:\n" + modelPath;
         }
         return false;
     }
 
-    if(fileInfo.suffix().compare("xml",Qt::CaseInsensitive) != 0)
+    const QString suffix = fileInfo.suffix().toLower();
+    if(suffix != "xml" && suffix != "onnx")
     {
         if(errorMessage != nullptr)
         {
-            *errorMessage = "Please Select an OpenVINO XML Model file";
-            //QFATAL("Please Select an OpenVINO XML Model file");
+            *errorMessage = "Please Select an OpenVINO IR (*.xml) or ONNX (*.onnx) Model File.";
         }
         return false;
     }
 
     try
     {
-        auto newModel = core.read_model(xmlPath.toStdString());
+        auto newModel = core.read_model(fileInfo.absoluteFilePath().toStdString());
+
+        if(newModel->inputs().size() != 1)
+        {
+            throw std::runtime_error("Only single-input image models are supported.");
+        }
+
+        const ov::PartialShape inputShape = newModel->input().get_partial_shape();
+        if(inputShape.rank().is_dynamic() || inputShape.rank().get_length() != 4)
+        {
+            throw std::runtime_error("Expected a four-dimensional NCHW input tensor.");
+        }
+
+        if(inputShape[1].is_dynamic() || inputShape[1].get_length() != 3)
+        {
+            throw std::runtime_error("Expected a three-channel NCHW input tensor.");
+        }
+
+        if(inputShape[2].is_dynamic() || inputShape[3].is_dynamic())
+        {
+            throw std::runtime_error("Dynamic image height or width is not supported.");
+        }
+
+        if(newModel->input().get_element_type() != ov::element::f32)
+        {
+            throw std::runtime_error("Expected a float32 input tensor.");
+        }
+
+        const int newInputHeight = static_cast<int>(inputShape[2].get_length());
+        const int newInputWidth = static_cast<int>(inputShape[3].get_length());
         auto newCompiledModel = core.compile_model(newModel,"CPU");
         model = newModel;
         compiledModel = newCompiledModel;
         loadedModelPath = fileInfo.absoluteFilePath();
-        //QDEBUG("Model is Loaded Sucessfully!");
+        inputHeight = newInputHeight;
+        inputWidth = newInputWidth;
         return true;
     }
     catch (const std::exception& error)
@@ -175,7 +206,7 @@ QStringList InferenceEngine::outputDescriptions() const
 }
 
 
-bool InferenceEngine::inferImage(const QImage& image, InferenceResult* result, QString* errorMessage)
+bool InferenceEngine::inferImage(const QImage& image, const InferenceOptions& options, InferenceResult* result, QString* errorMessage)
 {
     if(errorMessage != nullptr)
     {
@@ -210,8 +241,6 @@ bool InferenceEngine::inferImage(const QImage& image, InferenceResult* result, Q
         return false;
     }
 
-    constexpr int inputWidth = 256;
-    constexpr int inputHeight = 256;
     constexpr int channels = 3;
 
     QImage rgbImage = image.convertToFormat(QImage::Format_RGB888);
@@ -242,9 +271,9 @@ bool InferenceEngine::inferImage(const QImage& image, InferenceResult* result, Q
         ov::InferRequest inferRequest = compiledModel.create_infer_request();
         const ov::Shape inputShape = {
             1,
-            channels,
-            inputHeight,
-            inputWidth
+            static_cast<std::size_t>(channels),
+            static_cast<std::size_t>(inputHeight),
+            static_cast<std::size_t>(inputWidth)
         };
         ov::Tensor inputTensor(ov::element::f32,inputShape,inputData.data());
         inferRequest.set_input_tensor(inputTensor);
@@ -256,10 +285,19 @@ bool InferenceEngine::inferImage(const QImage& image, InferenceResult* result, Q
 
         const ov::Tensor scoreTensor = inferRequest.get_tensor("pred_score");
 
-        const ov::Tensor labelTensor = inferRequest.get_tensor("pred_label");
+        //const ov::Tensor labelTensor = inferRequest.get_tensor("pred_label");
         result->score = scoreTensor.data<const float>()[0];
 
-        result->isNg = labelTensor.data<const bool>()[0];
+        //result->isNg = labelTensor.data<const bool>()[0];
+        if (result->score < options.reviewThreshold) {
+            result->detectionLevel = DetectionLevel::OK;
+        }
+        else if (result->score < options.ngThreshold) {
+            result->detectionLevel = DetectionLevel::REVIEW;
+        }
+        else {
+            result->detectionLevel = DetectionLevel::NG;
+        }
 
         const ov::Tensor anomalyTensor = inferRequest.get_tensor("anomaly_map");
         const ov::Shape anomalyShape = anomalyTensor.get_shape();
@@ -272,7 +310,8 @@ bool InferenceEngine::inferImage(const QImage& image, InferenceResult* result, Q
         const int anomalyMapHeight = static_cast<int>(anomalyShape[2]);
         const int anomalyMapWidth = static_cast<int>(anomalyShape[3]);
         const float* anomalyData = anomalyTensor.data<const float>();
-        result->heatmapOverlay = AssistFunc::createHeatmapOverlay(image,anomalyData,anomalyMapWidth,anomalyMapHeight);
+        const float heatmapAlpha = std::clamp(static_cast<float>(options.heatmapAlpha),0.0F,1.0F);
+        result->heatmapOverlay = AssistFunc::createHeatmapOverlay(image,anomalyData,anomalyMapWidth,anomalyMapHeight,heatmapAlpha);
 
         const ov::Tensor maskTensor = inferRequest.get_tensor("pred_mask");
         const ov::Shape maskShape = maskTensor.get_shape();

@@ -45,6 +45,11 @@ QStatusBar QLabel#FooterOk {
     font-weight: 700;
 }
 
+QStatusBar QLabel#FooterReview {
+    color: #d97706;
+    font-weight: 700;
+}
+
 /* Top toolbar */
 QToolBar {
     background: #ffffff;

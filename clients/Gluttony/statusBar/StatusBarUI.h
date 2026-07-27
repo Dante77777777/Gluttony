@@ -11,6 +11,7 @@ public:
     QWidget* midWidget;
     QHBoxLayout* midLayout;
     QLabel* imageCountLabel;
+    QLabel* reviewLabel;
     QLabel* ngLabel;
     QLabel* okLabel;
     QLabel* avgScoreLabel;
@@ -36,6 +37,12 @@ public:
         separator3->setFrameShadow(QFrame::Sunken);
         separator3->setFixedHeight(18);
 
+        auto* separator4 = new QFrame();
+        separator4->setObjectName("StatusBarSeparator");
+        separator4->setFrameShape(QFrame::VLine);
+        separator4->setFrameShadow(QFrame::Sunken);
+        separator4->setFixedHeight(18);
+
         statusBar = new QStatusBar(parent);
         midWidget = new QWidget(statusBar);
         midLayout = new QHBoxLayout(midWidget);
@@ -48,6 +55,8 @@ public:
         imageCountLabel = new QLabel("Images:0");
         ngLabel = new QLabel("NG:0");
         ngLabel->setObjectName("FooterNg");
+        reviewLabel = new QLabel("Review:0");
+        reviewLabel->setObjectName("FooterReview");
         okLabel = new QLabel("OK:0");
         okLabel->setObjectName("FooterOk");
         avgScoreLabel = new QLabel("Avg Score:0.000");
@@ -62,6 +71,8 @@ public:
         midLayout->addWidget(separator2);
         midLayout->addWidget(okLabel);
         midLayout->addWidget(separator3);
+        midLayout->addWidget(reviewLabel);
+        midLayout->addWidget(separator4);
         midLayout->addWidget(avgScoreLabel);
 
         midLayout->addStretch();

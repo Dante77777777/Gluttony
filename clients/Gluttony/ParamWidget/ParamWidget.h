@@ -4,11 +4,13 @@
 #include <QDir>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QSignalBlocker>
 #include <QImage>
 
 #include "ParamWidgetUI.h"
 #include "../LogWidget/LogMessage.h"
 #include "../ViewWidget/ViewWidget.h"
+#include "../Inference/InferenceEngine.h"
 
 class ParamWidget : public QWidget
 {
@@ -20,6 +22,8 @@ public:
 signals:
     void sigImageSelected(const QImage& iamge, const QString& imagePath);
     void sigFolderSelected(const QString& folderPath);
+public:
+    InferenceOptions inferenceOptions() const;
 public slots:
     void onSelectImageButtonClicked();
     void onSelectFolderButtonClicked();

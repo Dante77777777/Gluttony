@@ -49,7 +49,7 @@ public:
     void setupUI();
     void setupToolBar();
 private slots:
-    void onModelSelected(const QString& xmlPath);
+    void onModelSelected(const QString& modelPath);
     void onImageSelected(const QImage image, const QString imagePath);
     void onStartActionTriggered();
     void onFolderSelected(const QString& folderPath);
@@ -99,6 +99,7 @@ private:
     int completedImageCount = 0;
     int ngImageCount = 0;
     int okImageCount = 0;
+    int reviewImageCount = 0;
     double totalScore = 0;
 
     void startDetection(const QStringList& singleFiles);

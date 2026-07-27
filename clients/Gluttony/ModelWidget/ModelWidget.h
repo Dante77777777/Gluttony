@@ -19,7 +19,7 @@ public:
     void setupUI();
 
 signals:
-    void sigModelSelect(const QString& xmlPath);
+    void sigModelSelect(const QString& modelPath);
 private slots:
     void onSelectModelButtonClicked();
 private:
