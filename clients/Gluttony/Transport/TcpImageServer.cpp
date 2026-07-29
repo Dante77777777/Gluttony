@@ -7,7 +7,7 @@ TcpImageServer::TcpImageServer(QObject* parent)
     connect(server_,&QTcpServer::newConnection,this,&TcpImageServer::onNewConnection);
 
     connect(server_,&QTcpServer::acceptError,this,[this](){
-        emit errorOccured(server_->errorString());
+        emit errorOccurred(server_->errorString());
     });
 }
 
@@ -37,7 +37,7 @@ bool TcpImageServer::start(const QHostAddress& address, quint16 port, QString* e
         {
             *errorMessage = message;
         }
-        emit errorOccured(message);
+        emit errorOccurred(message);
         return false;
     }
 
@@ -131,7 +131,7 @@ void TcpImageServer::attachClient(QTcpSocket* socket)
     connect(socket,&QTcpSocket::errorOccurred,this,[this,socket](QAbstractSocket::SocketError){
         if(client_.data() == socket)
         {
-            emit errorOccured(socket->errorString());
+            emit errorOccurred(socket->errorString());
         }
     });
 

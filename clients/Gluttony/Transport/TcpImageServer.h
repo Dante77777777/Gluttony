@@ -46,7 +46,7 @@ signals:
      */
     void bytesReceived(const QByteArray& bytes);
 
-    void errorOccured(const QString& errorMessage);
+    void errorOccurred(const QString& errorMessage);
 private:
     void onNewConnection();
     void attachClient(QTcpSocket* socket);

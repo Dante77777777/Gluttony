@@ -8,6 +8,10 @@ find_package(OpenCV 4.12.0 REQUIRED COMPONENTS core imgproc highgui)
 
 qt_standard_project_setup()
 
+if(BUILD_TESTING)
+    find_package(Qt6 6.5 REQUIRED COMPONENTS Test)
+endif()
+
 qt_add_executable(Gluttony
     WIN32 MACOSX_BUNDLE
     main.cpp
@@ -89,6 +93,8 @@ qt_add_executable(Gluttony
 
     Transport/TcpImageServer.h
     Transport/TcpImageServer.cpp
+    Transport/FrameProtocol.h
+    Transport/FrameProtocol.cpp
 )
 
 get_filename_component(
@@ -122,6 +128,32 @@ qt_add_resources(
 )
 
 if(BUILD_TESTING)
+    qt_add_executable(GluttonyTcpImageServerTest
+        tests/TcpImageServerTest.cpp
+
+        Transport/TcpImageServer.h
+        Transport/TcpImageServer.cpp
+    )
+
+    target_include_directories(
+        GluttonyTcpImageServerTest
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    target_link_libraries(
+        GluttonyTcpImageServerTest
+        PRIVATE
+            Qt::Core
+            Qt::Network
+            Qt::Test
+    )
+
+    add_test(
+        NAME GluttonyTcpImageServerTest
+        COMMAND GluttonyTcpImageServerTest
+    )
+
     qt_add_executable(GluttonyPersistenceSmoke
         tests/PersistenceSmoke.cpp
         DataBase/DataBaseConnection.h
