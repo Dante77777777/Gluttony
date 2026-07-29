@@ -140,7 +140,7 @@ void TcpImageServer::attachClient(QTcpSocket* socket)
         if(wasActiveClient)
         {
             client_.clear();
-            emit clientDisconnected();
+            emit sigClientDisconnected();
         }
         socket->deleteLater();
     });

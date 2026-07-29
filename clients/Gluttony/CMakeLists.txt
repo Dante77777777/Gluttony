@@ -99,6 +99,10 @@ qt_add_executable(Gluttony
     Transport/FrameStreamDecoder.cpp
     Transport/CameraStreamReceiver.h
     Transport/CameraStreamReceiver.cpp
+    Transport/ReceivedFrameImageDecoder.h
+    Transport/ReceivedFrameImageDecoder.cpp
+    Transport/CameraFrameSource.h
+    Transport/CameraFrameSource.cpp
 )
 
 get_filename_component(
@@ -208,6 +212,105 @@ if(BUILD_TESTING)
     add_test(
         NAME GluttonyFrameStreamDecoderTest
         COMMAND GluttonyFrameStreamDecoderTest
+    )
+
+    qt_add_executable(GluttonyCameraStreamReceiverTest
+        tests/CameraStreamReceiverTest.cpp
+
+        Transport/TcpImageServer.h
+        Transport/TcpImageServer.cpp
+        Transport/FrameProtocol.h
+        Transport/FrameProtocol.cpp
+        Transport/FrameStreamDecoder.h
+        Transport/FrameStreamDecoder.cpp
+        Transport/CameraStreamReceiver.h
+        Transport/CameraStreamReceiver.cpp
+    )
+
+    target_include_directories(
+        GluttonyCameraStreamReceiverTest
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    target_link_libraries(
+        GluttonyCameraStreamReceiverTest
+        PRIVATE
+            Qt::Core
+            Qt::Network
+            Qt::Test
+    )
+
+    add_test(
+        NAME GluttonyCameraStreamReceiverTest
+        COMMAND GluttonyCameraStreamReceiverTest
+    )
+
+    qt_add_executable(GluttonyReceivedFrameImageDecoderTest
+        tests/ReceivedFrameImageDecoderTest.cpp
+
+        Transport/FrameProtocol.h
+        Transport/FrameProtocol.cpp
+        Transport/FrameStreamDecoder.h
+        Transport/FrameStreamDecoder.cpp
+        Transport/ReceivedFrameImageDecoder.h
+        Transport/ReceivedFrameImageDecoder.cpp
+    )
+
+    target_include_directories(
+        GluttonyReceivedFrameImageDecoderTest
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    target_link_libraries(
+        GluttonyReceivedFrameImageDecoderTest
+        PRIVATE
+            Qt::Core
+            Qt::Gui
+            Qt::Test
+    )
+
+    add_test(
+        NAME GluttonyReceivedFrameImageDecoderTest
+        COMMAND GluttonyReceivedFrameImageDecoderTest
+    )
+
+    qt_add_executable(GluttonyCameraFrameSourceTest
+        tests/CameraFrameSourceTest.cpp
+
+        Transport/TcpImageServer.h
+        Transport/TcpImageServer.cpp
+        Transport/FrameProtocol.h
+        Transport/FrameProtocol.cpp
+        Transport/FrameStreamDecoder.h
+        Transport/FrameStreamDecoder.cpp
+        Transport/CameraStreamReceiver.h
+        Transport/CameraStreamReceiver.cpp
+        Transport/ReceivedFrameImageDecoder.h
+        Transport/ReceivedFrameImageDecoder.cpp
+        Transport/CameraFrameSource.h
+        Transport/CameraFrameSource.cpp
+    )
+
+    target_include_directories(
+        GluttonyCameraFrameSourceTest
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    target_link_libraries(
+        GluttonyCameraFrameSourceTest
+        PRIVATE
+            Qt::Core
+            Qt::Gui
+            Qt::Network
+            Qt::Test
+    )
+
+    add_test(
+        NAME GluttonyCameraFrameSourceTest
+        COMMAND GluttonyCameraFrameSourceTest
     )
 
     qt_add_executable(GluttonyPersistenceSmoke

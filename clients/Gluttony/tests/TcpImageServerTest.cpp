@@ -156,7 +156,7 @@ void TcpImageServerTest::
     );
     QSignalSpy disconnectedSpy(
         &server,
-        &TcpImageServer::clientDisconnected
+        &TcpImageServer::sigClientDisconnected
     );
 
     QTcpSocket client;
@@ -201,7 +201,7 @@ void TcpImageServerTest::rejectsSecondClient()
     );
     QSignalSpy rejectedSpy(
         &server,
-        &TcpImageServer::clientRejected
+        &TcpImageServer::sigClientRejected
     );
 
     QTcpSocket firstClient;

@@ -7,9 +7,9 @@ CameraStreamReceiver::CameraStreamReceiver(QObject* parent)
 {
     connect(server_,&TcpImageServer::bytesReceived,decoder_,&FrameStreamDecoder::appendBytes);
 
-    connect(server_,&TcpImageServer::sigServerStarted,this,&CameraStreamReceiver::sigServerStopped);
+    connect(server_,&TcpImageServer::sigServerStarted,this,&CameraStreamReceiver::sigServerStarted);
 
-    connect(server_,&TcpImageServer::sigServerStarted,this,[this](){
+    connect(server_,&TcpImageServer::sigServerStopped,this,[this](){
         decoder_->reset();
         emit sigServerStopped();
     });
