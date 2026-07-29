@@ -3,7 +3,7 @@ project(Gluttony LANGUAGES CXX)
 
 include(CTest)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Sql)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Sql Network)
 find_package(OpenCV 4.12.0 REQUIRED COMPONENTS core imgproc highgui)
 
 qt_standard_project_setup()
@@ -86,6 +86,9 @@ qt_add_executable(Gluttony
 
     Workers/ImageWorker.h
     Workers/ImageWorker.cpp
+
+    Transport/TcpImageServer.h
+    Transport/TcpImageServer.cpp
 )
 
 get_filename_component(
@@ -255,10 +258,11 @@ target_link_libraries(Gluttony PRIVATE ${OpenCV_LIBS})
 
 target_link_libraries(Gluttony
     PRIVATE
-        Qt::Core
-        Qt::Widgets
-        Qt::Sql
-        openvino::runtime
+    Qt::Core
+    Qt::Widgets
+    Qt::Sql
+    Qt::Network
+    openvino::runtime
 )
 
 include(GNUInstallDirs)
