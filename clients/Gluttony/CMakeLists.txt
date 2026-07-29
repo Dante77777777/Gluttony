@@ -95,6 +95,8 @@ qt_add_executable(Gluttony
     Transport/TcpImageServer.cpp
     Transport/FrameProtocol.h
     Transport/FrameProtocol.cpp
+    Transport/FrameStreamDecoder.h
+    Transport/FrameStreamDecoder.cpp
 )
 
 get_filename_component(
@@ -152,6 +154,31 @@ if(BUILD_TESTING)
     add_test(
         NAME GluttonyTcpImageServerTest
         COMMAND GluttonyTcpImageServerTest
+    )
+
+    qt_add_executable(GluttonyFrameProtocolTest
+        tests/FrameProtocolTest.cpp
+
+        Transport/FrameProtocol.h
+        Transport/FrameProtocol.cpp
+    )
+
+    target_include_directories(
+        GluttonyFrameProtocolTest
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    target_link_libraries(
+        GluttonyFrameProtocolTest
+        PRIVATE
+            Qt::Core
+            Qt::Test
+    )
+
+    add_test(
+        NAME GluttonyFrameProtocolTest
+        COMMAND GluttonyFrameProtocolTest
     )
 
     qt_add_executable(GluttonyPersistenceSmoke
