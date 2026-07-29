@@ -36,9 +36,9 @@ signals:
 
     void sigClientConnected(const QString& peerAddress, quint16 peerPort);
 
-    void clientDisconnected();
+    void sigClientDisconnected();
 
-    void clientRejected(const QString& reason);
+    void sigClientRejected(const QString& reason);
 
     /*
      * 这里只表示收到一段 TCP 字节。

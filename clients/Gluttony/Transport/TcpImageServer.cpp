@@ -58,7 +58,7 @@ void TcpImageServer::stop()
         socket->abort();
         socket->deleteLater();
 
-        emit clientDisconnected();
+        emit sigClientDisconnected();
     }
 
     if(server_->isListening())
@@ -99,7 +99,7 @@ void TcpImageServer::onNewConnection()
 
         if(hasClient())
         {
-            emit clientRejected(QStringLiteral("Only one camera client is allowed"));
+            emit sigClientRejected(QStringLiteral("Only one camera client is allowed"));
             socket->abort();
             socket->deleteLater();
             continue;

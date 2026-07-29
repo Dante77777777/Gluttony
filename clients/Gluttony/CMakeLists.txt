@@ -97,6 +97,8 @@ qt_add_executable(Gluttony
     Transport/FrameProtocol.cpp
     Transport/FrameStreamDecoder.h
     Transport/FrameStreamDecoder.cpp
+    Transport/CameraStreamReceiver.h
+    Transport/CameraStreamReceiver.cpp
 )
 
 get_filename_component(
@@ -179,6 +181,33 @@ if(BUILD_TESTING)
     add_test(
         NAME GluttonyFrameProtocolTest
         COMMAND GluttonyFrameProtocolTest
+    )
+
+    qt_add_executable(GluttonyFrameStreamDecoderTest
+        tests/FrameStreamDecoderTest.cpp
+
+        Transport/FrameProtocol.h
+        Transport/FrameProtocol.cpp
+        Transport/FrameStreamDecoder.h
+        Transport/FrameStreamDecoder.cpp
+    )
+
+    target_include_directories(
+        GluttonyFrameStreamDecoderTest
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    target_link_libraries(
+        GluttonyFrameStreamDecoderTest
+        PRIVATE
+            Qt::Core
+            Qt::Test
+    )
+
+    add_test(
+        NAME GluttonyFrameStreamDecoderTest
+        COMMAND GluttonyFrameStreamDecoderTest
     )
 
     qt_add_executable(GluttonyPersistenceSmoke
