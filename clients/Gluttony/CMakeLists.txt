@@ -90,6 +90,8 @@ qt_add_executable(Gluttony
 
     Workers/ImageWorker.h
     Workers/ImageWorker.cpp
+    Workers/CameraInferenceWorker.h
+    Workers/CameraInferenceWorker.cpp
 
     Transport/TcpImageServer.h
     Transport/TcpImageServer.cpp
@@ -374,6 +376,43 @@ set(OpenVINO_DIR "D:/Anaconda/Lib/site-packages/openvino/cmake")
 find_package(OpenVINO REQUIRED COMPONENTS Runtime)
 
 if(BUILD_TESTING)
+    qt_add_executable(GluttonyCameraInferenceWorkerTest
+        tests/CameraInferenceWorkerTest.cpp
+
+        Inference/InferenceEngine.h
+        Inference/InferenceEngine.cpp
+        Workers/CameraInferenceWorker.h
+        Workers/CameraInferenceWorker.cpp
+        Transport/FrameProtocol.h
+        Transport/FrameProtocol.cpp
+        Transport/FrameStreamDecoder.h
+        Transport/FrameStreamDecoder.cpp
+        Transport/ReceivedFrameImageDecoder.h
+    )
+
+    target_include_directories(
+        GluttonyCameraInferenceWorkerTest
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+            ${OpenCV_INCLUDE_DIRS}
+    )
+
+    target_link_libraries(
+        GluttonyCameraInferenceWorkerTest
+        PRIVATE
+            Qt::Core
+            Qt::Gui
+            Qt::Widgets
+            Qt::Test
+            openvino::runtime
+            ${OpenCV_LIBS}
+    )
+
+    add_test(
+        NAME GluttonyCameraInferenceWorkerTest
+        COMMAND GluttonyCameraInferenceWorkerTest
+    )
+
     qt_add_executable(GluttonyPersistenceWorkerSmoke
         tests/PersistenceWorkerSmoke.cpp
         DataBase/DataBaseConnection.h
