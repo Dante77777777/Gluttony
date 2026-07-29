@@ -128,7 +128,12 @@ void TcpImageServer::attachClient(QTcpSocket* socket)
         }
     });
 
-    connect(socket,&QTcpSocket::errorOccurred,this,[this,socket](QAbstractSocket::SocketError){
+    connect(socket,&QTcpSocket::errorOccurred,this,[this,socket](QAbstractSocket::SocketError socketError){
+        if(socketError == QAbstractSocket::RemoteHostClosedError)
+        {
+            return ;
+        }
+
         if(client_.data() == socket)
         {
             emit errorOccurred(socket->errorString());

@@ -158,6 +158,10 @@ void TcpImageServerTest::
         &server,
         &TcpImageServer::sigClientDisconnected
     );
+    QSignalSpy errorSpy(
+        &server,
+        &TcpImageServer::errorOccurred
+    );
 
     QTcpSocket client;
     client.connectToHost(
@@ -183,6 +187,7 @@ void TcpImageServerTest::
         2000
     );
     QVERIFY(server.isListening());
+    QCOMPARE(errorSpy.count(), 0);
 }
 
 void TcpImageServerTest::rejectsSecondClient()
