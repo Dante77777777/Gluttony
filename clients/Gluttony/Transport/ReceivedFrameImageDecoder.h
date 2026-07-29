@@ -8,6 +8,7 @@
 #include <QImageReader>
 #include <QIODevice>
 #include <QSize>
+#include <QMetaType>
 
 #include "FrameStreamDecoder.h"
 
@@ -16,6 +17,7 @@ struct DecodedCameraFrame
     FrameProtocol::FrameHeader header;
     QImage image;
 };
+Q_DECLARE_METATYPE(DecodedCameraFrame)
 
 class ReceivedFrameImageDecoder final
 {

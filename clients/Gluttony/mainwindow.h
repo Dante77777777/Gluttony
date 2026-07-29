@@ -16,6 +16,7 @@
 #include "ViewWidget/ViewWidget.h"
 #include "Workers/ImageWorker.h"
 #include "statusBar/StatusBar.h"
+#include "Transport/CameraFrameSource.h"
 
 class QCloseEvent;
 
@@ -52,9 +53,7 @@ protected:
 
 private slots:
     void onModelSelected(const QString& modelPath);
-    void onImageSelected(
-        const QImage& image,
-        const QString& imagePath);
+    void onImageSelected(const QImage& image,const QString& imagePath);
     void onFolderSelected(const QString& folderPath);
     void onStartActionTriggered();
     void onStopActionTriggered();
@@ -63,25 +62,16 @@ private slots:
     void onBatchManagerActionTriggered();
     void onRecordClicked(const DetectionRecord& record);
 
-    void onPersistenceInitialized(
-        bool success,
-        const QString& errorMessage);
+    void onPersistenceInitialized(bool success,const QString& errorMessage);
     void onInterruptedRunsReady(const InspectionRunRecords& runs);
     void onRunCreated(const InspectionRunRecord& run);
     void onItemClaimed(const ClaimedInspectionItem& item);
-    void onPersistenceOperationFailed(
-        const QString& operation,
-        const QString& contextId,
-        const QString& errorMessage);
+    void onPersistenceOperationFailed(const QString& operation,const QString& contextId,const QString& errorMessage);
 
     void onInferenceReady();
     void onInferenceInitializationFailed(const QString& errorMessage);
-    void onTaskFinished(
-        const ClaimedInspectionItem& item,
-        const InferenceResult& result);
-    void onTaskFailed(
-        const ClaimedInspectionItem& item,
-        const QString& errorMessage);
+    void onTaskFinished(const ClaimedInspectionItem& item,const InferenceResult& result);
+    void onTaskFailed(const ClaimedInspectionItem& item,const QString& errorMessage);
 
     void onSuccessPersisted(const PersistedInspectionResult& result);
     void onFailurePersisted(const InspectionItemPageRow& item);
@@ -89,22 +79,19 @@ private slots:
     void onRunSaved(const QString& runId);
     void onRunDiscarded(const QString& runId);
     void onBatchCatalogReady(const InspectionRunRecords& runs);
-    void onRunLoaded(
-        const InspectionRunRecord& run,
-        const InspectionItemRows& items,
-        bool resumed);
+    void onRunLoaded(const InspectionRunRecord& run,const InspectionItemRows& items,bool resumed);
     void onSavedRunDeleted(const QString& runId);
     void onRunInterrupted(const QString& runId);
+    void onCameraFrameReady(const DecodedCameraFrame& frame);
 
 private:
     void setupUI();
     void setupToolBar();
+    void initializeCameraFrameSource();
     void initializePersistence();
 
     void beginNewRun(const QString& sourceType, const QString& sourcePath);
-    void startInferenceWorker(
-        const QString& modelPath,
-        const InferenceOptions& options);
+    void startInferenceWorker(const QString& modelPath,const InferenceOptions& options);
     void stopInferenceWorker();
     void requestNextItem();
     void continueAfterPersistedItem();
@@ -143,6 +130,7 @@ private:
     ToolBar* topToolBar = nullptr;
     StatusBar* statusBar = nullptr;
     ViewWidget* viewWidget = nullptr;
+    CameraFrameSource* cameraFrameSource = nullptr;
     InferenceEngine inferenceEngine;
     ModelWidget* modelWidget = nullptr;
     ParamWidget* paramWidget = nullptr;

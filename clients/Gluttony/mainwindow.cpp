@@ -20,6 +20,8 @@
 namespace MainWindowUtils
 {
 
+constexpr quint16 CAMERA_STREAM_PORT = 9000;
+
 DetectionLevel detectionLevelFromText(const QString& value)
 {
     if (value == QStringLiteral("NG"))
@@ -68,6 +70,7 @@ MainWindow::MainWindow(
     statusBar->ui->setupUI(this);
     setupToolBar();
     setupUI();
+    initializeCameraFrameSource();
     initializePersistence();
     updateActionStates();
 }
@@ -75,6 +78,12 @@ MainWindow::MainWindow(
 MainWindow::~MainWindow()
 {
     closing = true;
+
+    if(cameraFrameSource != nullptr)
+    {
+        cameraFrameSource->stop();
+    }
+
     stopInferenceWorker();
 
     if (persistenceThread != nullptr && persistenceThread->isRunning())
@@ -242,6 +251,175 @@ void MainWindow::setupUI()
         this,
         &MainWindow::onRecordClicked);
 }
+
+
+void MainWindow::initializeCameraFrameSource()
+{
+    cameraFrameSource =
+        new CameraFrameSource(this);
+
+    connect(
+        cameraFrameSource,
+        &CameraFrameSource::sigServerStarted,
+        this,
+        [this](quint16 port)
+        {
+            statusBar->ui->readyLabel->setText(
+                QStringLiteral(
+                    "Camera server listening on port %1")
+                    .arg(port));
+
+            QDEBUG(
+                QStringLiteral(
+                    "Camera server started on port %1")
+                    .arg(port));
+        });
+
+    connect(
+        cameraFrameSource,
+        &CameraFrameSource::sigServerStopped,
+        this,
+        [this]()
+        {
+            if(!closing)
+            {
+                statusBar->ui->readyLabel->setText(
+                    QStringLiteral(
+                        "Camera server stopped"));
+            }
+
+            QDEBUG(
+                QStringLiteral(
+                    "Camera server stopped"));
+        });
+
+    connect(
+        cameraFrameSource,
+        &CameraFrameSource::sigClientConnected,
+        this,
+        [this](
+            const QString& peerAddress,
+            quint16 peerPort)
+        {
+            statusBar->ui->readyLabel->setText(
+                QStringLiteral(
+                    "Camera connected: %1:%2")
+                    .arg(peerAddress)
+                    .arg(peerPort));
+
+            QDEBUG(
+                QStringLiteral(
+                    "Camera client connected: %1:%2")
+                    .arg(peerAddress)
+                    .arg(peerPort));
+        });
+
+    connect(
+        cameraFrameSource,
+        &CameraFrameSource::sigClientDisconnected,
+        this,
+        [this]()
+        {
+            statusBar->ui->readyLabel->setText(
+                QStringLiteral(
+                    "Waiting for camera on port %1")
+                    .arg(
+                        MainWindowUtils::
+                        CAMERA_STREAM_PORT));
+
+            QWARNING(
+                QStringLiteral(
+                    "Camera client disconnected"));
+        });
+
+    connect(
+        cameraFrameSource,
+        &CameraFrameSource::sigClientRejected,
+        this,
+        [](const QString& reason)
+        {
+            QWARNING(
+                QStringLiteral(
+                    "Camera client rejected: %1")
+                    .arg(reason));
+        });
+
+    connect(
+        cameraFrameSource,
+        &CameraFrameSource::sigFrameReady,
+        this,
+        &MainWindow::onCameraFrameReady);
+
+    connect(
+        cameraFrameSource,
+        &CameraFrameSource::sigTransportError,
+        this,
+        [](const QString& errorMessage)
+        {
+            QWARNING(
+                QStringLiteral(
+                    "Camera transport error: %1")
+                    .arg(errorMessage));
+        });
+
+    connect(
+        cameraFrameSource,
+        &CameraFrameSource::sigProtocolError,
+        this,
+        [](const QString& errorMessage)
+        {
+            QWARNING(
+                QStringLiteral(
+                    "Camera protocol error: %1")
+                    .arg(errorMessage));
+        });
+
+    connect(
+        cameraFrameSource,
+        &CameraFrameSource::sigImageDecodeError,
+        this,
+        [](
+            quint64 sequence,
+            const QString& errorMessage)
+        {
+            QWARNING(
+                QStringLiteral(
+                    "Camera frame %1 decode error: %2")
+                    .arg(sequence)
+                    .arg(errorMessage));
+        });
+
+    connect(
+        cameraFrameSource,
+        &CameraFrameSource::sigBufferOverflow,
+        this,
+        [](qsizetype bufferedBytes)
+        {
+            QWARNING(
+                QStringLiteral(
+                    "Camera receive buffer overflow: "
+                    "%1 bytes")
+                    .arg(bufferedBytes));
+        });
+
+    QString errorMessage;
+
+    if(!cameraFrameSource->start(
+            QHostAddress::AnyIPv4,
+            MainWindowUtils::CAMERA_STREAM_PORT,
+            &errorMessage))
+    {
+        statusBar->ui->readyLabel->setText(
+            QStringLiteral(
+                "Camera server failed to start"));
+
+        QCRITICAL(
+            QStringLiteral(
+                "Failed to start camera server: %1")
+                .arg(errorMessage));
+    }
+}
+
 
 void MainWindow::initializePersistence()
 {
@@ -1440,6 +1618,34 @@ void MainWindow::onRunInterrupted(const QString& runId)
         updateActionStates();
     }
 }
+
+
+void MainWindow::onCameraFrameReady(
+    const DecodedCameraFrame& frame)
+{
+    if(frame.image.isNull())
+    {
+        QWARNING(
+            QStringLiteral(
+                "Camera frame %1 is empty")
+                .arg(frame.header.sequence));
+        return;
+    }
+
+    viewWidget->ui->originalGV->setImage(
+        frame.image);
+
+    viewWidget->setOriginalImagePath(
+        QStringLiteral(
+            "Camera_Frame_%1.jpg")
+            .arg(frame.header.sequence));
+
+    statusBar->ui->readyLabel->setText(
+        QStringLiteral(
+            "Camera frame %1 received")
+            .arg(frame.header.sequence));
+}
+
 
 void MainWindow::onPersistenceOperationFailed(
     const QString& operation,
