@@ -259,6 +259,12 @@ void MainWindow::setupUI()
 }
 
 
+bool MainWindow::isCameraFrameProcessingAllowed() const
+{
+    return !closing && detectionStatus == DetectionStatus::IDLE && activeRunStatus != QStringLiteral("DRAFT");
+}
+
+
 void MainWindow::initializeCameraInferenceController()
 {
     cameraInferenceController = new CameraInferenceController(this);
@@ -278,6 +284,10 @@ void MainWindow::initializeCameraInferenceController()
     connect(cameraInferenceController,&CameraInferenceController::sigFrameFinished,this, &MainWindow::onCameraInferenceFinished);
 
     connect(cameraInferenceController,&CameraInferenceController::sigFrameFailed,this,[this](quint64 sequence, const QString& errorMessage){
+        if(!isCameraFrameProcessingAllowed())
+        {
+            return;
+        }
         statusBar->ui->readyLabel->setText(QStringLiteral("Camera frame %1 inference failed").arg(sequence));
         QWARNING(QStringLiteral("Camera frame inference failed | Sequence=%1 | %2").arg(sequence).arg(errorMessage));
     });
@@ -1670,9 +1680,13 @@ void MainWindow::onRunInterrupted(const QString& runId)
 }
 
 
-void MainWindow::onCameraFrameReady(
-    const DecodedCameraFrame& frame)
+void MainWindow::onCameraFrameReady(const DecodedCameraFrame& frame)
 {
+    if(!isCameraFrameProcessingAllowed())
+    {
+        return;
+    }
+
     if(frame.image.isNull())
     {
         QWARNING(
@@ -1998,6 +2012,10 @@ void MainWindow::discardActiveDraftBlocking()
 
 void MainWindow::onCameraInferenceFinished(const DecodedCameraFrame& frame, const InferenceResult& result)
 {
+    if(!isCameraFrameProcessingAllowed())
+    {
+        return;
+    }
     viewWidget->ui->originalGV->setImage(frame.image);
     viewWidget->setOriginalImagePath(QStringLiteral("Camera_Frame_%1.jpg").arg(frame.header.sequence));
 

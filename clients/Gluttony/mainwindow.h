@@ -92,6 +92,7 @@ private:
     void setupToolBar();
     void initializeCameraFrameSource();
     void initializePersistence();
+    bool isCameraFrameProcessingAllowed() const;
     void initializeCameraInferenceController();
 
     void beginNewRun(const QString& sourceType, const QString& sourcePath);
