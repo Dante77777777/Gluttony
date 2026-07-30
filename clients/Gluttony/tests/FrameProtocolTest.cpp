@@ -11,6 +11,7 @@ private slots:
     void encodesFixedWireFormat();
     void fragmentedPacketWaitsForMoreBytes();
     void stickyPacketsDecodeInOrder();
+    void inferenceMessagesRoundTrip();
     void invalidHeadersAreRejected();
 };
 
@@ -250,6 +251,62 @@ void FrameProtocolTest::stickyPacketsDecodeInOrder()
     QCOMPARE(header.sequence, 101ULL);
     QCOMPARE(payload, QByteArray("second"));
     QVERIFY(receiveBuffer.isEmpty());
+}
+
+void FrameProtocolTest::inferenceMessagesRoundTrip()
+{
+    const QList<FrameProtocol::MessageType> messageTypes{
+        FrameProtocol::MessageType::InferenceResult,
+        FrameProtocol::MessageType::InferenceError
+    };
+
+    for (const FrameProtocol::MessageType messageType
+         : messageTypes)
+    {
+        auto expectedHeader = makeHeader(7001);
+        expectedHeader.messageType = messageType;
+        expectedHeader.pixelFormat =
+            FrameProtocol::PixelFormat::Unknown;
+        expectedHeader.width = 0;
+        expectedHeader.height = 0;
+        const QByteArray expectedPayload(
+            "{\"status\":\"OK\"}");
+
+        QByteArray receiveBuffer =
+            FrameProtocol::encodePacket(
+                expectedHeader,
+                expectedPayload);
+        QVERIFY(!receiveBuffer.isEmpty());
+
+        FrameProtocol::FrameHeader actualHeader;
+        QByteArray actualPayload;
+        QString errorMessage;
+
+        const auto result =
+            FrameProtocol::tryDecodePacket(
+                receiveBuffer,
+                actualHeader,
+                actualPayload,
+                &errorMessage);
+
+        QCOMPARE(
+            static_cast<int>(result),
+            static_cast<int>(
+                FrameProtocol::DecodeResult::Complete));
+        QVERIFY(errorMessage.isEmpty());
+        QVERIFY(receiveBuffer.isEmpty());
+        QCOMPARE(
+            static_cast<int>(actualHeader.messageType),
+            static_cast<int>(messageType));
+        QCOMPARE(actualHeader.sequence, 7001ULL);
+        QCOMPARE(
+            static_cast<int>(actualHeader.pixelFormat),
+            static_cast<int>(
+                FrameProtocol::PixelFormat::Unknown));
+        QCOMPARE(actualHeader.width, 0U);
+        QCOMPARE(actualHeader.height, 0U);
+        QCOMPARE(actualPayload, expectedPayload);
+    }
 }
 
 void FrameProtocolTest::invalidHeadersAreRejected()

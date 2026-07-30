@@ -13,7 +13,9 @@ void setError(QString* errorMessage, const QString& message)
 bool isKnownMessageType(quint16 value)
 {
     return value == static_cast<quint16>(FrameProtocol::MessageType::ImageFrame)
-        || value == static_cast<quint16>(FrameProtocol::MessageType::Heartbeat);
+        || value == static_cast<quint16>(FrameProtocol::MessageType::Heartbeat)
+        || value == static_cast<quint16>(FrameProtocol::MessageType::InferenceResult)
+        || value == static_cast<quint16>(FrameProtocol::MessageType::InferenceError);
 }
 
 }

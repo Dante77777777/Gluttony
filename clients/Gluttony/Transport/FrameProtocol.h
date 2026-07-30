@@ -22,7 +22,9 @@ inline constexpr quint32 MAX_PAYLOAD_SIZE = 64U * 1024U * 1024U;
 enum class MessageType : quint16
 {
     ImageFrame = 1,
-    Heartbeat = 2
+    Heartbeat = 2,
+    InferenceResult = 3,
+    InferenceError = 4
 };
 
 enum class PixelFormat : quint16
