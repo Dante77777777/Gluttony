@@ -109,6 +109,8 @@ qt_add_executable(Gluttony
     Transport/ReceivedFrameImageDecoder.cpp
     Transport/CameraFrameSource.h
     Transport/CameraFrameSource.cpp
+    Transport/InferenceResponseCodec.h
+    Transport/InferenceResponseCodec.cpp
 )
 
 get_filename_component(
@@ -191,6 +193,31 @@ if(BUILD_TESTING)
     add_test(
         NAME GluttonyFrameProtocolTest
         COMMAND GluttonyFrameProtocolTest
+    )
+
+    qt_add_executable(GluttonyInferenceResponseCodecTest
+        tests/InferenceResponseCodecTest.cpp
+
+        Transport/InferenceResponseCodec.h
+        Transport/InferenceResponseCodec.cpp
+    )
+
+    target_include_directories(
+        GluttonyInferenceResponseCodecTest
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    target_link_libraries(
+        GluttonyInferenceResponseCodecTest
+        PRIVATE
+            Qt::Core
+            Qt::Test
+    )
+
+    add_test(
+        NAME GluttonyInferenceResponseCodecTest
+        COMMAND GluttonyInferenceResponseCodecTest
     )
 
     qt_add_executable(GluttonyFrameStreamDecoderTest
