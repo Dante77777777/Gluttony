@@ -15,6 +15,8 @@ private slots:
     void relaysServerLifecycle();
     void decodesFragmentedAndStickyPackets();
     void clearsPartialPacketAfterDisconnect();
+    void relaysBytesToConnectedClient();
+    void propagatesWriteFailureWithoutClient();
 };
 
 namespace
@@ -227,6 +229,58 @@ void CameraStreamReceiverTest::
         frame.payload,
         QByteArray("complete-payload"));
 }
+
+
+void CameraStreamReceiverTest::
+    relaysBytesToConnectedClient()
+{
+    CameraStreamReceiver receiver;
+    QVERIFY(receiver.start(
+        QHostAddress::LocalHost,
+        0));
+
+    QTcpSocket client;
+    connectClient(receiver, client);
+
+    const QByteArray expectedBytes(
+        "receiver-response-bytes");
+    QString errorMessage;
+
+    QVERIFY2(
+        receiver.sendBytes(
+            expectedBytes,
+            &errorMessage),
+        qPrintable(errorMessage));
+    QVERIFY(errorMessage.isEmpty());
+
+    QTRY_VERIFY_WITH_TIMEOUT(
+        client.bytesAvailable()
+            >= expectedBytes.size(),
+        2000);
+    QCOMPARE(client.readAll(), expectedBytes);
+}
+
+
+void CameraStreamReceiverTest::
+    propagatesWriteFailureWithoutClient()
+{
+    CameraStreamReceiver receiver;
+    QVERIFY(receiver.start(
+        QHostAddress::LocalHost,
+        0));
+
+    QString errorMessage;
+    QVERIFY(
+        !receiver.sendBytes(
+            QByteArray("response"),
+            &errorMessage));
+    QCOMPARE(
+        errorMessage,
+        QStringLiteral(
+            "No connected camera client"));
+    QCOMPARE(receiver.pendingWriteBytes(), 0);
+}
+
 
 QTEST_GUILESS_MAIN(CameraStreamReceiverTest)
 

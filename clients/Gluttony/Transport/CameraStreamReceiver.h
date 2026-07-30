@@ -4,6 +4,7 @@
 #include <QHostAddress>
 #include <QObject>
 #include <QString>
+#include <QByteArray>
 
 #include "FrameStreamDecoder.h"
 #include "TcpImageServer.h"
@@ -23,6 +24,8 @@ public:
     quint16 listeningPort() const;
     bool hasClient() const;
     qsizetype bufferedBytes() const noexcept;
+    qint64 pendingWriteBytes() const;
+    bool sendBytes(const QByteArray& bytes, QString* errorMessage = nullptr);
 
 signals:
     void sigServerStarted(quint16 port);

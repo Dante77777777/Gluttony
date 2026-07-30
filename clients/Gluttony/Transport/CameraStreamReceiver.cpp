@@ -69,3 +69,15 @@ qsizetype CameraStreamReceiver::bufferedBytes() const noexcept
 {
     return decoder_->bufferedBytes();
 }
+
+
+qint64 CameraStreamReceiver::pendingWriteBytes() const
+{
+    return server_->pendingWriteBytes();
+}
+
+
+bool CameraStreamReceiver::sendBytes(const QByteArray& bytes, QString* errorMessage)
+{
+    return server_->sendBytes(bytes,errorMessage);
+}
