@@ -70,6 +70,7 @@ MainWindow::MainWindow(
     statusBar->ui->setupUI(this);
     setupToolBar();
     setupUI();
+    initializeCameraInferenceController();
     initializeCameraFrameSource();
     initializePersistence();
     updateActionStates();
@@ -82,6 +83,11 @@ MainWindow::~MainWindow()
     if(cameraFrameSource != nullptr)
     {
         cameraFrameSource->stop();
+    }
+
+    if(cameraInferenceController != nullptr)
+    {
+        cameraInferenceController->stop();
     }
 
     stopInferenceWorker();
@@ -250,6 +256,27 @@ void MainWindow::setupUI()
         &DetectionResult::sigRecord,
         this,
         &MainWindow::onRecordClicked);
+}
+
+
+void MainWindow::initializeCameraInferenceController()
+{
+    cameraInferenceController = new CameraInferenceController(this);
+
+    connect(cameraInferenceController, &CameraInferenceController::sigReady,this,[this](){
+        statusBar->ui->readyLabel->setText(QStringLiteral("Camera inference ready"));
+
+        QDEBUG(QStringLiteral("Camera inference controller ready"));
+    });
+
+    connect(cameraInferenceController,&CameraInferenceController::sigInitializationFailed,this,[this](const QString& errorMessage){
+        statusBar->ui->readyLabel->setText(QStringLiteral("Camera inference initialization failed"));
+        QWARNING(QStringLiteral("Camera inference initialization failed: %1").arg(errorMessage));
+    });
+
+    connect(cameraInferenceController,&CameraInferenceController::sigStopped,this,[](){
+        QDEBUG(QStringLiteral("Camera inference controller stopped"));
+    });
 }
 
 
@@ -566,9 +593,17 @@ void MainWindow::onModelSelected(const QString& modelPath)
     {
         QDEBUG(input);
     }
+
     for (const QString& output : inferenceEngine.outputDescriptions())
     {
         QDEBUG(output);
+    }
+
+    if(cameraInferenceController != nullptr)
+    {
+        statusBar->ui->readyLabel->setText(QStringLiteral("Loading camera inference model..."));
+
+        cameraInferenceController->start(loadedModelPath,paramWidget->inferenceOptions());
     }
     updateActionStates();
 }

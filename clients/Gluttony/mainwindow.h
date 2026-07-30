@@ -17,6 +17,7 @@
 #include "Workers/ImageWorker.h"
 #include "statusBar/StatusBar.h"
 #include "Transport/CameraFrameSource.h"
+#include "Workers/CameraInferenceController.h"
 
 class QCloseEvent;
 
@@ -89,6 +90,7 @@ private:
     void setupToolBar();
     void initializeCameraFrameSource();
     void initializePersistence();
+    void initializeCameraInferenceController();
 
     void beginNewRun(const QString& sourceType, const QString& sourcePath);
     void startInferenceWorker(const QString& modelPath,const InferenceOptions& options);
@@ -131,6 +133,7 @@ private:
     StatusBar* statusBar = nullptr;
     ViewWidget* viewWidget = nullptr;
     CameraFrameSource* cameraFrameSource = nullptr;
+    CameraInferenceController* cameraInferenceController = nullptr;
     InferenceEngine inferenceEngine;
     ModelWidget* modelWidget = nullptr;
     ParamWidget* paramWidget = nullptr;
