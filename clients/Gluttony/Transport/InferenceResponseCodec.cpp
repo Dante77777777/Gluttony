@@ -162,21 +162,106 @@ bool decodeResult(const QByteArray& jsonBytes, InferenceResultPayload* result, Q
 }
 
 
+QByteArray encodeError(const InferenceErrorPayload& payload, QString* errorMessage)
+{
+    if(errorMessage != nullptr)
+    {
+        errorMessage->clear();
+    }
+
+    const QString errorCode = payload.errorCode.trimmed();
+    const QString message = payload.message.trimmed();
+
+    if(errorCode.isEmpty() || errorCode.size() > MAX_ERROR_CODE_LENGTH)
+    {
+        setError(errorMessage, QStringLiteral("Invalid inference error code"));
+        return {};
+    }
+
+    if(message.isEmpty() || message.size() > MAX_ERROR_MESSAGE_LENGTH)
+    {
+        setError(errorMessage, QStringLiteral("Invalid inference error message"));
+        return {};
+    }
+
+    QJsonObject object;
+    object.insert(QStringLiteral("schema_version"), SCHEMA_VERSION);
+    object.insert(QStringLiteral("error_code"), errorCode);
+    object.insert(QStringLiteral("message"), message);
+
+    return QJsonDocument(object).toJson(QJsonDocument::Compact);
+}
 
 
+bool decodeError(const QByteArray& jsonBytes, InferenceErrorPayload* result, QString* errorMessage)
+{
+    if(errorMessage != nullptr)
+    {
+        errorMessage->clear();
+    }
 
+    if(result == nullptr)
+    {
+        setError(errorMessage, QStringLiteral("Error payload pointer is null"));
+        return false;
+    }
 
+    *result = InferenceErrorPayload{};
 
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(jsonBytes, &parseError);
 
+    if(parseError.error != QJsonParseError::NoError || !document.isObject())
+    {
+        setError(errorMessage, QStringLiteral("Invalid inference error JSON"));
+        return false;
+    }
 
+    const QJsonObject object = document.object();
 
+    if(object.value(QStringLiteral("schema_version")).toInt(-1) != SCHEMA_VERSION)
+    {
+        setError(errorMessage, QStringLiteral("Unsupported inference error schema"));
+        return false;
+    }
 
+    const QJsonValue errorCodeValue = object.value(QStringLiteral("error_code"));
+    const QJsonValue messageValue = object.value(QStringLiteral("message"));
 
+    if(!errorCodeValue.isString())
+    {
+        setError(errorMessage, QStringLiteral("Invalid inference error code"));
+        return false;
+    }
 
+    if(!messageValue.isString())
+    {
+        setError(errorMessage, QStringLiteral("Invalid inference error message"));
+        return false;
+    }
 
+    const QString errorCode =
+        errorCodeValue.toString().trimmed();
+    const QString message =
+        messageValue.toString().trimmed();
 
+    if(errorCode.isEmpty() || errorCode.size() > MAX_ERROR_CODE_LENGTH)
+    {
+        setError(errorMessage, QStringLiteral("Invalid inference error code"));
+        return false;
+    }
 
+    if(message.isEmpty() || message.size() > MAX_ERROR_MESSAGE_LENGTH)
+    {
+        setError(errorMessage, QStringLiteral("Invalid inference error message"));
+        return false;
+    }
 
+    result->errorCode = errorCode;
+    result->message = message;
+
+    return true;
+}
 
 
 

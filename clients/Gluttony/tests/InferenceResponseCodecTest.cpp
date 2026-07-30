@@ -14,6 +14,10 @@ private slots:
     void decoderRejectsMalformedJson();
     void decoderRejectsUnsupportedSchema();
     void decoderRejectsInvalidResultFields();
+    void errorRoundTripPreservesFields();
+    void encoderRejectsInvalidErrorFields();
+    void decoderRejectsMalformedErrorJsonAndSchema();
+    void decoderRejectsInvalidErrorFields();
 };
 
 
@@ -151,6 +155,141 @@ void InferenceResponseCodecTest::
 
         QVERIFY(
             !InferenceResponseCodec::decodeResult(
+                jsonBytes,
+                &result,
+                &errorMessage));
+        QVERIFY(!errorMessage.isEmpty());
+    }
+}
+
+void InferenceResponseCodecTest::
+    errorRoundTripPreservesFields()
+{
+    InferenceResponseCodec::InferenceErrorPayload expected;
+    expected.errorCode =
+        QStringLiteral("INFERENCE_FAILED");
+    expected.message =
+        QStringLiteral("OpenVINO request failed");
+
+    QString errorMessage;
+    const QByteArray jsonBytes =
+        InferenceResponseCodec::encodeError(
+            expected,
+            &errorMessage);
+
+    QVERIFY2(
+        !jsonBytes.isEmpty(),
+        qPrintable(errorMessage));
+    QVERIFY(errorMessage.isEmpty());
+
+    InferenceResponseCodec::InferenceErrorPayload actual;
+    QVERIFY2(
+        InferenceResponseCodec::decodeError(
+            jsonBytes,
+            &actual,
+            &errorMessage),
+        qPrintable(errorMessage));
+    QVERIFY(errorMessage.isEmpty());
+    QCOMPARE(actual.errorCode, expected.errorCode);
+    QCOMPARE(actual.message, expected.message);
+}
+
+
+void InferenceResponseCodecTest::
+    encoderRejectsInvalidErrorFields()
+{
+    InferenceResponseCodec::InferenceErrorPayload payload;
+    payload.message = QStringLiteral("message");
+
+    QString errorMessage;
+    QVERIFY(
+        InferenceResponseCodec::encodeError(
+            payload,
+            &errorMessage)
+            .isEmpty());
+    QVERIFY(!errorMessage.isEmpty());
+
+    payload.errorCode =
+        QStringLiteral("INFERENCE_FAILED");
+    payload.message.clear();
+    QVERIFY(
+        InferenceResponseCodec::encodeError(
+            payload,
+            &errorMessage)
+            .isEmpty());
+    QVERIFY(!errorMessage.isEmpty());
+
+    payload.errorCode = QString(
+        InferenceResponseCodec::
+            MAX_ERROR_CODE_LENGTH + 1,
+        QLatin1Char('A'));
+    payload.message = QStringLiteral("message");
+    QVERIFY(
+        InferenceResponseCodec::encodeError(
+            payload,
+            &errorMessage)
+            .isEmpty());
+    QVERIFY(!errorMessage.isEmpty());
+
+    payload.errorCode = QStringLiteral("FAILED");
+    payload.message = QString(
+        InferenceResponseCodec::
+            MAX_ERROR_MESSAGE_LENGTH + 1,
+        QLatin1Char('B'));
+    QVERIFY(
+        InferenceResponseCodec::encodeError(
+            payload,
+            &errorMessage)
+            .isEmpty());
+    QVERIFY(!errorMessage.isEmpty());
+}
+
+
+void InferenceResponseCodecTest::
+    decoderRejectsMalformedErrorJsonAndSchema()
+{
+    InferenceResponseCodec::InferenceErrorPayload result;
+    QString errorMessage;
+
+    QVERIFY(
+        !InferenceResponseCodec::decodeError(
+            QByteArray("{not-json"),
+            &result,
+            &errorMessage));
+    QVERIFY(!errorMessage.isEmpty());
+
+    const QByteArray unsupportedSchema(
+        R"({"schema_version":2,"error_code":"FAILED","message":"message"})");
+    QVERIFY(
+        !InferenceResponseCodec::decodeError(
+            unsupportedSchema,
+            &result,
+            &errorMessage));
+    QVERIFY(!errorMessage.isEmpty());
+}
+
+
+void InferenceResponseCodecTest::
+    decoderRejectsInvalidErrorFields()
+{
+    const QList<QByteArray> invalidPayloads{
+        QByteArray(
+            R"({"schema_version":1,"error_code":"","message":"message"})"),
+        QByteArray(
+            R"({"schema_version":1,"error_code":"FAILED","message":""})"),
+        QByteArray(
+            R"({"schema_version":1,"error_code":42,"message":"message"})"),
+        QByteArray(
+            R"({"schema_version":1,"error_code":"FAILED","message":42})")
+    };
+
+    for (const QByteArray& jsonBytes : invalidPayloads)
+    {
+        InferenceResponseCodec::InferenceErrorPayload result;
+        QString errorMessage;
+
+        QVERIFY(
+            !InferenceResponseCodec::decodeError(
                 jsonBytes,
                 &result,
                 &errorMessage));
