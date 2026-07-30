@@ -126,5 +126,19 @@ std::optional<MigrationSource> loadMigration(int version, const QString& name, c
     }
     migrations.push_back(std::move(initialSchema.value()));
 
+    auto tcpCameraPersistence = MigrationCatalogUtils::loadMigration(
+        2,
+        QStringLiteral("002_tcp_camera_persistence"),
+        QStringLiteral(
+            ":/database/migrations/002_tcp_camera_persistence.sql"),
+        23,
+        errorMessage);
+
+    if(!tcpCameraPersistence.has_value())
+    {
+        return std::nullopt;
+    }
+    migrations.push_back(std::move(tcpCameraPersistence.value()));
+
     return migrations;
 }

@@ -12,6 +12,7 @@ struct NewInspectionRun final
     QString runId;
     QString sourceType;
     QString sourcePath;
+    QString peerAddress;
     QString storagePath;
     QString storageOrigin;
     QString modelPath;
@@ -130,6 +131,7 @@ struct InspectionRunRecord final
     QString status;
     QString sourceType;
     QString sourcePath;
+    QString peerAddress;
     QString storagePath;
     QString storageOrigin;
     QString modelPath;
@@ -149,6 +151,8 @@ struct InspectionRunRecord final
     qint64 reviewCount = 0;
     qint64 ngCount = 0;
     double scoreSum = 0.0;
+    qint64 receivedCount = 0;
+    qint64 droppedCount = 0;
 };
 
 struct PersistedInspectionResult final

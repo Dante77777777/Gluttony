@@ -124,7 +124,13 @@ set(
     "${GLUTTONY_MIGRATION_SOURCE_DIR}/001_initial_schema.sql"
 )
 
-if(NOT EXISTS "${GLUTTONY_INITIAL_MIGRATION}")
+set(
+    GLUTTONY_TCP_CAMERA_MIGRATION
+    "${GLUTTONY_MIGRATION_SOURCE_DIR}/002_tcp_camera_persistence.sql"
+)
+
+if(NOT EXISTS "${GLUTTONY_INITIAL_MIGRATION}"
+   OR NOT EXISTS "${GLUTTONY_TCP_CAMERA_MIGRATION}")
     message(
         FATAL_ERROR
         "Required database migration was not found: "
@@ -141,6 +147,7 @@ qt_add_resources(
         "${GLUTTONY_MIGRATION_SOURCE_DIR}"
     FILES
         "${GLUTTONY_INITIAL_MIGRATION}"
+        "${GLUTTONY_TCP_CAMERA_MIGRATION}"
 )
 
 if(BUILD_TESTING)
@@ -408,6 +415,7 @@ if(BUILD_TESTING)
             "${GLUTTONY_MIGRATION_SOURCE_DIR}"
         FILES
             "${GLUTTONY_INITIAL_MIGRATION}"
+            "${GLUTTONY_TCP_CAMERA_MIGRATION}"
     )
 
     target_link_libraries(
@@ -549,6 +557,7 @@ if(BUILD_TESTING)
             "${GLUTTONY_MIGRATION_SOURCE_DIR}"
         FILES
             "${GLUTTONY_INITIAL_MIGRATION}"
+            "${GLUTTONY_TCP_CAMERA_MIGRATION}"
     )
 
     target_include_directories(

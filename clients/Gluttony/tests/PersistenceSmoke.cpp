@@ -101,6 +101,149 @@ bool verifyFailedMigrationRollback(
     return result;
 }
 
+bool verifyVersionOneUpgrade(
+    const QString& databasePath,
+    const QVector<MigrationSource>& migrations)
+{
+    if (migrations.size() < 2)
+    {
+        return check(
+            false,
+            QStringLiteral("TCP migration is missing from the catalog."));
+    }
+
+    QVector<MigrationSource> versionOneMigrations;
+    versionOneMigrations.push_back(migrations.first());
+
+    QString errorMessage;
+    const auto versionOneBootstrap =
+        DatabaseBootstrapper::initialize(
+            databasePath,
+            QStringLiteral("smoke.upgrade.v1.bootstrap"),
+            versionOneMigrations,
+            &errorMessage);
+    if (!check(
+            versionOneBootstrap.has_value()
+                && versionOneBootstrap->finalUserVersion == 1,
+            QStringLiteral("Version 1 fixture bootstrap failed: %1")
+                .arg(errorMessage)))
+    {
+        return false;
+    }
+
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const QString runId = newUuid();
+    const QString resultId = newUuid();
+    {
+        auto connection = DataBaseConnection::openSqlite(
+            databasePath,
+            QStringLiteral("smoke.upgrade.v1.data"),
+            &errorMessage);
+        if (!check(
+                connection.has_value(),
+                QStringLiteral("Version 1 fixture connection failed: %1")
+                    .arg(errorMessage)))
+        {
+            return false;
+        }
+
+        QSqlDatabase database =
+            QSqlDatabase::database(
+                QStringLiteral("smoke.upgrade.v1.data"),
+                false);
+        NewInspectionRun run;
+        run.runId = runId;
+        run.sourceType = QStringLiteral("SINGLE_IMAGE");
+        run.sourcePath = QStringLiteral("D:/upgrade/source.png");
+        run.storagePath =
+            QStringLiteral("D:/upgrade/runs/%1").arg(runId);
+        run.storageOrigin = QStringLiteral("MANAGED");
+        run.modelPath = QStringLiteral("D:/upgrade/model.onnx");
+        run.modelFormat = QStringLiteral("ONNX");
+        run.modelHash = QString(64, QLatin1Char('a'));
+        run.appVersion = QStringLiteral("upgrade-smoke");
+        run.reviewThreshold = 0.45;
+        run.ngThreshold = 0.60;
+        run.heatmapAlpha = 0.55;
+        run.startedAtMs = now;
+
+        NewInspectionItem item;
+        item.resultId = resultId;
+        item.sequenceNo = 1;
+        item.sourceFileName = QStringLiteral("source.png");
+        item.sourceFilePath = run.sourcePath;
+        item.sourceFileSize = 128;
+        item.sourceModifiedAtMs = now;
+        item.createdAtMs = now;
+
+        if (!check(
+                InspectionRunRepository::createWithInputItems(
+                    database,
+                    run,
+                    {item},
+                    &errorMessage),
+                QStringLiteral("Version 1 fixture insert failed: %1")
+                    .arg(errorMessage)))
+        {
+            return false;
+        }
+    }
+
+    errorMessage.clear();
+    const auto upgraded = DatabaseBootstrapper::initialize(
+        databasePath,
+        QStringLiteral("smoke.upgrade.v2.bootstrap"),
+        migrations,
+        &errorMessage);
+    if (!check(
+            upgraded.has_value()
+                && upgraded->initialUserVersion == 1
+                && upgraded->finalUserVersion == 2
+                && upgraded->appliedThisStartupCount == 1,
+            QStringLiteral("Version 1 to 2 upgrade failed: %1")
+                .arg(errorMessage)))
+    {
+        return false;
+    }
+
+    auto connection = DataBaseConnection::openSqlite(
+        databasePath,
+        QStringLiteral("smoke.upgrade.verify"),
+        &errorMessage);
+    if (!check(
+            connection.has_value(),
+            QStringLiteral("Upgrade verification connection failed: %1")
+                .arg(errorMessage)))
+    {
+        return false;
+    }
+
+    QSqlDatabase database =
+        QSqlDatabase::database(
+            QStringLiteral("smoke.upgrade.verify"),
+            false);
+    QSqlQuery query(database);
+    query.prepare(
+        QStringLiteral(
+            "SELECT r.source_type, r.received_count, r.dropped_count, "
+            "COUNT(i.result_id) "
+            "FROM inspection_run AS r "
+            "LEFT JOIN inspection_item AS i ON i.run_id = r.run_id "
+            "WHERE r.run_id = :run_id "
+            "GROUP BY r.run_id;"));
+    query.bindValue(QStringLiteral(":run_id"), runId);
+    return check(
+        query.exec()
+            && query.next()
+            && query.value(0).toString()
+                   == QStringLiteral("SINGLE_IMAGE")
+            && query.value(1).toLongLong() == 1
+            && query.value(2).toLongLong() == 0
+            && query.value(3).toLongLong() == 1,
+        QStringLiteral(
+            "Version 2 migration did not preserve version 1 data."));
+}
+
 bool exerciseRepositories(
     const QString& databasePath,
     const QVector<MigrationSource>& migrations)
@@ -117,9 +260,9 @@ bool exerciseRepositories(
             QStringLiteral("First Bootstrap Failed: %1").arg(bootstrapError))
         || !check(
             firstBootstrap->initialUserVersion == 0
-                && firstBootstrap->finalUserVersion == 1
+                && firstBootstrap->finalUserVersion == 2
                 && firstBootstrap->applicationId == 1196183374
-                && firstBootstrap->appliedThisStartupCount == 1,
+                && firstBootstrap->appliedThisStartupCount == 2,
             QStringLiteral("First Bootstrap Report is Incorrect.")))
     {
         return false;
@@ -136,8 +279,8 @@ bool exerciseRepositories(
             secondBootstrap.has_value(),
             QStringLiteral("Second Bootstrap Failed: %1").arg(bootstrapError))
         || !check(
-            secondBootstrap->initialUserVersion == 1
-                && secondBootstrap->finalUserVersion == 1
+            secondBootstrap->initialUserVersion == 2
+                && secondBootstrap->finalUserVersion == 2
                 && secondBootstrap->appliedThisStartupCount == 0,
             QStringLiteral("Second Bootstrap was not Idempotent.")))
     {
@@ -493,9 +636,19 @@ int main(int argc, char* argv[])
     const QString repositoryDatabase =
         QDir(temporaryDirectory.path())
             .filePath(QStringLiteral("repository.db"));
+    const QString upgradeDatabase =
+        QDir(temporaryDirectory.path())
+            .filePath(QStringLiteral("upgrade.db"));
 
     if (!verifyFailedMigrationRollback(
             rollbackDatabase,
+            migrations.value()))
+    {
+        return 1;
+    }
+
+    if (!verifyVersionOneUpgrade(
+            upgradeDatabase,
             migrations.value()))
     {
         return 1;

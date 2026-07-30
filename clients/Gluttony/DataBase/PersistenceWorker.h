@@ -7,9 +7,21 @@
 #include "../Inference/InferenceEngine.h"
 
 #include <QObject>
+#include <QImage>
 #include <QSqlDatabase>
 
 #include <optional>
+
+struct CameraPersistenceFrame final
+{
+    QString runId;
+    quint64 transportSequence = 0;
+    qint64 capturedAtMs = 0;
+    int pixelFormat = 0;
+    quint32 width = 0;
+    quint32 height = 0;
+    QImage image;
+};
 
 class PersistenceWorker final : public QObject
 {
@@ -27,6 +39,7 @@ public slots:
     void shutdown();
 
     void createRun(NewInspectionRun run);
+    void createCameraRun(NewInspectionRun run);
     void claimNext(const QString& runId);
     void persistSuccess(
         const ClaimedInspectionItem& item,
@@ -34,6 +47,18 @@ public slots:
     void persistFailure(
         const ClaimedInspectionItem& item,
         const QString& errorMessage);
+    void persistCameraSuccess(
+        CameraPersistenceFrame frame,
+        InferenceResult result);
+    void persistCameraFailure(
+        CameraPersistenceFrame frame,
+        QString errorMessage);
+    void finalizeCameraRun(
+        const QString& runId,
+        const QString& name,
+        const QString& note,
+        qint64 receivedCount,
+        qint64 droppedCount);
     void finishAsDraft(const QString& runId);
     void saveDraft(
         const QString& runId,
@@ -51,9 +76,18 @@ signals:
     void interruptedRunsReady(const InspectionRunRecords& runs);
 
     void runCreated(const InspectionRunRecord& run);
+    void cameraRunCreated(const InspectionRunRecord& run);
     void itemClaimed(const ClaimedInspectionItem& item);
     void successPersisted(const PersistedInspectionResult& result);
     void failurePersisted(const InspectionItemPageRow& item);
+    void cameraSuccessPersisted(
+        const PersistedInspectionResult& result,
+        quint64 transportSequence);
+    void cameraFailurePersisted(
+        const InspectionItemPageRow& item,
+        quint64 transportSequence);
+    void cameraRunSaved(const QString& runId);
+    void cameraRunDiscarded(const QString& runId);
     void runDrafted(const InspectionRunRecord& run);
     void runSaved(const QString& runId);
     void runDiscarded(const QString& runId);

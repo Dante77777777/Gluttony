@@ -3,6 +3,7 @@
 #include "DataBase/PersistenceWorker.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QEventLoop>
 #include <QFile>
@@ -503,6 +504,238 @@ int main(int argc, char* argv[])
                 ? QStringLiteral("Deleting the Saved Run Failed.")
                 : operationFailure);
     }
+
+    operationFailure.clear();
+    NewInspectionRun cameraRun;
+    cameraRun.runId =
+        QUuid::createUuid().toString(QUuid::WithoutBraces);
+    cameraRun.sourceType = QStringLiteral("TCP_CAMERA");
+    cameraRun.sourcePath = QStringLiteral("tcp://127.0.0.1:51000");
+    cameraRun.peerAddress = QStringLiteral("127.0.0.1:51000");
+    cameraRun.storagePath =
+        QDir(managedRunsRoot).filePath(cameraRun.runId);
+    cameraRun.storageOrigin = QStringLiteral("MANAGED");
+    cameraRun.modelPath = modelPath;
+    cameraRun.appVersion = QStringLiteral("worker-smoke");
+    cameraRun.reviewThreshold = 0.45;
+    cameraRun.ngThreshold = 0.60;
+    cameraRun.heatmapAlpha = 0.55;
+    cameraRun.startedAtMs = QDateTime::currentMSecsSinceEpoch();
+
+    InspectionRunRecord createdCameraRun;
+    QEventLoop cameraCreateLoop;
+    const QMetaObject::Connection cameraCreateConnection =
+        QObject::connect(
+            worker,
+            &PersistenceWorker::cameraRunCreated,
+            &cameraCreateLoop,
+            [&](const InspectionRunRecord& run)
+            {
+                createdCameraRun = run;
+                cameraCreateLoop.quit();
+            });
+    QMetaObject::invokeMethod(
+        worker,
+        [worker, cameraRun]()
+        {
+            worker->createCameraRun(cameraRun);
+        },
+        Qt::QueuedConnection);
+    if (!waitForLoop(cameraCreateLoop)
+        || createdCameraRun.sourceType
+               != QStringLiteral("TCP_CAMERA")
+        || createdCameraRun.peerAddress
+               != cameraRun.peerAddress
+        || createdCameraRun.totalCount != 0)
+    {
+        return fail(
+            operationFailure.isEmpty()
+                ? QStringLiteral("TCP camera run creation failed.")
+                : operationFailure);
+    }
+    QObject::disconnect(cameraCreateConnection);
+
+    CameraPersistenceFrame cameraFrame;
+    cameraFrame.runId = cameraRun.runId;
+    cameraFrame.transportSequence = 7001;
+    cameraFrame.capturedAtMs =
+        QDateTime::currentMSecsSinceEpoch();
+    cameraFrame.pixelFormat = 100;
+    cameraFrame.width = 16;
+    cameraFrame.height = 12;
+    cameraFrame.image =
+        QImage(16, 12, QImage::Format_RGB32);
+    cameraFrame.image.fill(Qt::green);
+
+    InferenceResult cameraResult;
+    cameraResult.detectionLevel = DetectionLevel::NG;
+    cameraResult.score = 0.88F;
+    cameraResult.inferenceMs = 9;
+    cameraResult.defectArea = 17;
+    cameraResult.heatmapOverlay =
+        QImage(16, 12, QImage::Format_RGB32);
+    cameraResult.heatmapOverlay.fill(Qt::yellow);
+
+    PersistedInspectionResult cameraPersisted;
+    quint64 persistedTransportSequence = 0;
+    QEventLoop cameraPersistLoop;
+    const QMetaObject::Connection cameraPersistConnection =
+        QObject::connect(
+            worker,
+            &PersistenceWorker::cameraSuccessPersisted,
+            &cameraPersistLoop,
+            [&](const PersistedInspectionResult& result,
+                quint64 transportSequence)
+            {
+                cameraPersisted = result;
+                persistedTransportSequence = transportSequence;
+                cameraPersistLoop.quit();
+            });
+    QMetaObject::invokeMethod(
+        worker,
+        [worker, cameraFrame, cameraResult]()
+        {
+            worker->persistCameraSuccess(
+                cameraFrame,
+                cameraResult);
+        },
+        Qt::QueuedConnection);
+    if (!waitForLoop(cameraPersistLoop)
+        || persistedTransportSequence != 7001
+        || !QFileInfo::exists(cameraPersisted.sourceFilePath)
+        || !QFileInfo::exists(cameraPersisted.heatmapFilePath))
+    {
+        return fail(
+            operationFailure.isEmpty()
+                ? QStringLiteral(
+                      "TCP camera success persistence failed.")
+                : operationFailure);
+    }
+    QObject::disconnect(cameraPersistConnection);
+
+    CameraPersistenceFrame failedCameraFrame = cameraFrame;
+    failedCameraFrame.transportSequence = 7002;
+    failedCameraFrame.image.fill(Qt::magenta);
+    InspectionItemPageRow failedCameraItem;
+    quint64 failedTransportSequence = 0;
+    QEventLoop cameraFailureLoop;
+    const QMetaObject::Connection cameraFailureConnection =
+        QObject::connect(
+            worker,
+            &PersistenceWorker::cameraFailurePersisted,
+            &cameraFailureLoop,
+            [&](const InspectionItemPageRow& item,
+                quint64 transportSequence)
+            {
+                failedCameraItem = item;
+                failedTransportSequence = transportSequence;
+                cameraFailureLoop.quit();
+            });
+    QMetaObject::invokeMethod(
+        worker,
+        [worker, failedCameraFrame]()
+        {
+            worker->persistCameraFailure(
+                failedCameraFrame,
+                QStringLiteral("Synthetic camera failure"));
+        },
+        Qt::QueuedConnection);
+    if (!waitForLoop(cameraFailureLoop)
+        || failedTransportSequence != 7002
+        || failedCameraItem.status != QStringLiteral("FAILED")
+        || !QFileInfo::exists(failedCameraItem.sourceFilePath))
+    {
+        return fail(
+            operationFailure.isEmpty()
+                ? QStringLiteral(
+                      "TCP camera failure persistence failed.")
+                : operationFailure);
+    }
+    QObject::disconnect(cameraFailureConnection);
+
+    bool cameraSaved = false;
+    QEventLoop cameraFinalizeLoop;
+    const QMetaObject::Connection cameraFinalizeConnection =
+        QObject::connect(
+            worker,
+            &PersistenceWorker::cameraRunSaved,
+            &cameraFinalizeLoop,
+            [&](const QString& runId)
+            {
+                cameraSaved = runId == cameraRun.runId;
+                cameraFinalizeLoop.quit();
+            });
+    QMetaObject::invokeMethod(
+        worker,
+        [worker, runId = cameraRun.runId]()
+        {
+            worker->finalizeCameraRun(
+                runId,
+                QStringLiteral("TCP Camera Smoke"),
+                QStringLiteral("Automatic camera batch"),
+                3,
+                1);
+        },
+        Qt::QueuedConnection);
+    if (!waitForLoop(cameraFinalizeLoop)
+        || !cameraSaved
+        || !QFileInfo::exists(
+            QDir(cameraRun.storagePath).filePath(
+                QStringLiteral("manifest.json")))
+        || !QFileInfo::exists(
+            QDir(cameraRun.storagePath).filePath(
+                QStringLiteral("items.json"))))
+    {
+        return fail(
+            operationFailure.isEmpty()
+                ? QStringLiteral(
+                      "TCP camera run finalization failed.")
+                : operationFailure);
+    }
+    QObject::disconnect(cameraFinalizeConnection);
+
+    InspectionRunRecord loadedCameraRun;
+    InspectionItemRows loadedCameraItems;
+    QEventLoop cameraLoadLoop;
+    const QMetaObject::Connection cameraLoadConnection =
+        QObject::connect(
+            worker,
+            &PersistenceWorker::runLoaded,
+            &cameraLoadLoop,
+            [&](const InspectionRunRecord& run,
+                const InspectionItemRows& items,
+                bool resumed)
+            {
+                if (!resumed && run.runId == cameraRun.runId)
+                {
+                    loadedCameraRun = run;
+                    loadedCameraItems = items;
+                    cameraLoadLoop.quit();
+                }
+            });
+    QMetaObject::invokeMethod(
+        worker,
+        [worker, runId = cameraRun.runId]()
+        {
+            worker->loadSavedRun(runId);
+        },
+        Qt::QueuedConnection);
+    if (!waitForLoop(cameraLoadLoop)
+        || loadedCameraRun.status != QStringLiteral("SAVED")
+        || loadedCameraRun.receivedCount != 3
+        || loadedCameraRun.droppedCount != 1
+        || loadedCameraRun.completedCount != 2
+        || loadedCameraRun.failedCount != 1
+        || loadedCameraRun.ngCount != 1
+        || loadedCameraItems.size() != 2)
+    {
+        return fail(
+            operationFailure.isEmpty()
+                ? QStringLiteral(
+                      "TCP camera saved batch verification failed.")
+                : operationFailure);
+    }
+    QObject::disconnect(cameraLoadConnection);
 
     threadGuard.stop();
 

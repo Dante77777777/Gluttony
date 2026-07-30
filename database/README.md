@@ -5,7 +5,8 @@
 ```text
 database/
 └── migrations/
-    └── 001_initial_schema.sql
+    ├── 001_initial_schema.sql
+    └── 002_tcp_camera_persistence.sql
 ```
 
 `001_initial_schema.sql` 是数据库版本 1 的完整结构迁移，包含：
@@ -14,6 +15,13 @@ database/
 - 5 个业务索引
 - 7 个状态和不可变性触发器
 - 2 个查询及核对视图
+
+`002_tcp_camera_persistence.sql` 将数据库升级到版本 2：
+
+- 保留版本 1 的批次和检测项；
+- 增加 `TCP_CAMERA` 数据源；
+- 记录相机连接、收帧及丢帧计数；
+- 记录传输序号、采集时间、像素格式和图像尺寸。
 
 ## 运行环境
 

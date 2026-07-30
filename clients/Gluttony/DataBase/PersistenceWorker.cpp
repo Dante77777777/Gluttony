@@ -142,6 +142,36 @@ QJsonObject itemJsonObject(const QSqlQuery& query)
             QStringLiteral("error_message"),
             query.value(10).toString());
     }
+    if (!query.value(11).isNull())
+    {
+        object.insert(
+            QStringLiteral("transport_sequence"),
+            query.value(11).toString());
+    }
+    if (!query.value(12).isNull())
+    {
+        object.insert(
+            QStringLiteral("captured_at_ms"),
+            query.value(12).toLongLong());
+    }
+    if (!query.value(13).isNull())
+    {
+        object.insert(
+            QStringLiteral("pixel_format"),
+            query.value(13).toInt());
+    }
+    if (!query.value(14).isNull())
+    {
+        object.insert(
+            QStringLiteral("image_width"),
+            query.value(14).toInt());
+    }
+    if (!query.value(15).isNull())
+    {
+        object.insert(
+            QStringLiteral("image_height"),
+            query.value(15).toInt());
+    }
 
     return object;
 }
@@ -187,6 +217,49 @@ void PersistenceWorker::initialize()
         processCleanupJobs(database);
         discardStartupDrafts(database);
         processCleanupJobs(database);
+
+        const auto startupCatalog =
+            readBatchCatalog(database, &errorMessage);
+        if (startupCatalog.has_value())
+        {
+            for (const InspectionRunRecord& run
+                 : startupCatalog.value())
+            {
+                if (run.status != QStringLiteral("INTERRUPTED")
+                    || run.sourceType
+                           != QStringLiteral("TCP_CAMERA"))
+                {
+                    continue;
+                }
+
+                QString recoveryError;
+                if (!InspectionRunRepository::resumeInterruptedRun(
+                        database,
+                        run.runId,
+                        PersistenceWorkerUtils::currentTimeMs(),
+                        &recoveryError))
+                {
+                    emit operationFailed(
+                        QStringLiteral("recover_camera_run"),
+                        run.runId,
+                        recoveryError);
+                    continue;
+                }
+
+                finalizeCameraRun(
+                    run.runId,
+                    QStringLiteral("Recovered TCP %1")
+                        .arg(
+                            QDateTime::currentDateTime().toString(
+                                QStringLiteral(
+                                    "yyyy-MM-dd HH:mm:ss"))),
+                    QStringLiteral(
+                        "Automatically recovered after an "
+                        "unclean shutdown."),
+                    qMax(run.receivedCount, run.totalCount),
+                    run.droppedCount);
+            }
+        }
     }
 
     emit initialized(true, {});
@@ -292,6 +365,42 @@ void PersistenceWorker::createRun(NewInspectionRun run)
     emit runCreated(storedRun.value());
 }
 
+void PersistenceWorker::createCameraRun(NewInspectionRun run)
+{
+    if (!ensureReady(QStringLiteral("create_camera_run"), run.runId))
+    {
+        return;
+    }
+
+    QString errorMessage;
+    qint64 totalCount = 0;
+    QSqlDatabase database = dataBase();
+    if (!createRunFromSource(
+            database,
+            &run,
+            &totalCount,
+            &errorMessage))
+    {
+        emit operationFailed(
+            QStringLiteral("create_camera_run"),
+            run.runId,
+            errorMessage);
+        return;
+    }
+
+    const auto storedRun = readRun(database, run.runId, &errorMessage);
+    if (!storedRun.has_value())
+    {
+        emit operationFailed(
+            QStringLiteral("read_camera_run"),
+            run.runId,
+            errorMessage);
+        return;
+    }
+
+    emit cameraRunCreated(storedRun.value());
+}
+
 bool PersistenceWorker::createRunFromSource(
     QSqlDatabase& database,
     NewInspectionRun* run,
@@ -309,8 +418,11 @@ bool PersistenceWorker::createRunFromSource(
 
     if (run->runId.size() != 36
         || (run->sourceType != QStringLiteral("SINGLE_IMAGE")
-            && run->sourceType != QStringLiteral("FOLDER"))
+            && run->sourceType != QStringLiteral("FOLDER")
+            && run->sourceType != QStringLiteral("TCP_CAMERA"))
         || run->sourcePath.trimmed().isEmpty()
+        || (run->sourceType == QStringLiteral("TCP_CAMERA")
+            && run->peerAddress.trimmed().isEmpty())
         || run->modelPath.trimmed().isEmpty()
         || run->reviewThreshold < 0.0
         || run->ngThreshold > 1.0
@@ -360,8 +472,12 @@ bool PersistenceWorker::createRunFromSource(
         return false;
     }
 
-    run->sourcePath =
-        QDir::cleanPath(QFileInfo(run->sourcePath).absoluteFilePath());
+    if (run->sourceType != QStringLiteral("TCP_CAMERA"))
+    {
+        run->sourcePath =
+            QDir::cleanPath(QFileInfo(run->sourcePath).absoluteFilePath());
+        run->peerAddress.clear();
+    }
     run->storageOrigin = QStringLiteral("MANAGED");
     run->storagePath = QDir::cleanPath(run->storagePath);
     run->startedAtMs =
@@ -385,7 +501,11 @@ bool PersistenceWorker::createRunFromSource(
 
     const QString heatmapDirectory =
         QDir(run->storagePath).filePath(QStringLiteral("heatmaps"));
-    if (!QDir().mkpath(heatmapDirectory))
+    const QString originalsDirectory =
+        QDir(run->storagePath).filePath(QStringLiteral("originals"));
+    if (!QDir().mkpath(heatmapDirectory)
+        || (run->sourceType == QStringLiteral("TCP_CAMERA")
+            && !QDir().mkpath(originalsDirectory)))
     {
         if (errorMessage != nullptr)
         {
@@ -427,12 +547,12 @@ bool PersistenceWorker::createRunFromSource(
         query.prepare(
             QStringLiteral(
                 "INSERT INTO inspection_run ("
-                "run_id, status, source_type, source_path, "
+                "run_id, status, source_type, source_path, peer_address, "
                 "storage_path, storage_origin, model_path, model_format, "
                 "model_hash, app_version, review_threshold, ng_threshold, "
                 "heatmap_alpha, started_at_ms, updated_at_ms, total_count"
                 ") VALUES ("
-                ":run_id, 'RUNNING', :source_type, :source_path, "
+                ":run_id, 'RUNNING', :source_type, :source_path, :peer_address, "
                 ":storage_path, 'MANAGED', :model_path, :model_format, "
                 ":model_hash, :app_version, :review_threshold, :ng_threshold, "
                 ":heatmap_alpha, :started_at_ms, :started_at_ms, 0"
@@ -440,6 +560,11 @@ bool PersistenceWorker::createRunFromSource(
         query.bindValue(QStringLiteral(":run_id"), run->runId);
         query.bindValue(QStringLiteral(":source_type"), run->sourceType);
         query.bindValue(QStringLiteral(":source_path"), run->sourcePath);
+        query.bindValue(
+            QStringLiteral(":peer_address"),
+            run->peerAddress.trimmed().isEmpty()
+                ? QVariant()
+                : QVariant(run->peerAddress.trimmed()));
         query.bindValue(QStringLiteral(":storage_path"), run->storagePath);
         query.bindValue(QStringLiteral(":model_path"), run->modelPath);
         query.bindValue(QStringLiteral(":model_format"), run->modelFormat);
@@ -531,7 +656,11 @@ bool PersistenceWorker::createRunFromSource(
         return true;
     };
 
-    if (run->sourceType == QStringLiteral("SINGLE_IMAGE"))
+    if (run->sourceType == QStringLiteral("TCP_CAMERA"))
+    {
+        // Stream items are appended after each inference completes.
+    }
+    else if (run->sourceType == QStringLiteral("SINGLE_IMAGE"))
     {
         if (!insertFile(run->sourcePath))
         {
@@ -573,7 +702,8 @@ bool PersistenceWorker::createRunFromSource(
         }
     }
 
-    if (sequenceNo == 0)
+    if (sequenceNo == 0
+        && run->sourceType != QStringLiteral("TCP_CAMERA"))
     {
         return rollbackFailure(
             QStringLiteral("The Selected Input Contains no Supported Images."));
@@ -622,7 +752,8 @@ std::optional<InspectionRunRecord> PersistenceWorker::readRun(
             "model_hash, app_version, review_threshold, ng_threshold, "
             "heatmap_alpha, started_at_ms, completed_at_ms, saved_at_ms, "
             "total_count, completed_count, failed_count, ok_count, "
-            "review_count, ng_count, score_sum "
+            "review_count, ng_count, score_sum, peer_address, "
+            "received_count, dropped_count "
             "FROM inspection_run WHERE run_id = :run_id;"));
     query.bindValue(QStringLiteral(":run_id"), runId);
     if (!query.exec())
@@ -683,6 +814,12 @@ std::optional<InspectionRunRecord> PersistenceWorker::readRun(
     run.reviewCount = query.value(22).toLongLong();
     run.ngCount = query.value(23).toLongLong();
     run.scoreSum = query.value(24).toDouble();
+    if (!query.value(25).isNull())
+    {
+        run.peerAddress = query.value(25).toString();
+    }
+    run.receivedCount = query.value(26).toLongLong();
+    run.droppedCount = query.value(27).toLongLong();
     return run;
 }
 
@@ -924,6 +1061,624 @@ void PersistenceWorker::persistFailure(
     emit failurePersisted(row);
 }
 
+void PersistenceWorker::persistCameraSuccess(
+    CameraPersistenceFrame frame,
+    InferenceResult result)
+{
+    const QString operation = QStringLiteral("persist_camera_success");
+    const QString contextId = QString::number(frame.transportSequence);
+    if (!ensureReady(operation, contextId))
+    {
+        return;
+    }
+    if (frame.runId.size() != 36
+        || frame.image.isNull()
+        || result.heatmapOverlay.isNull()
+        || frame.width == 0
+        || frame.height == 0)
+    {
+        emit operationFailed(
+            operation,
+            contextId,
+            QStringLiteral("Camera frame or inference result is invalid."));
+        return;
+    }
+
+    QString errorMessage;
+    QSqlDatabase database = dataBase();
+    const auto run = readRun(database, frame.runId, &errorMessage);
+    if (!run.has_value()
+        || run->sourceType != QStringLiteral("TCP_CAMERA")
+        || run->status != QStringLiteral("RUNNING"))
+    {
+        emit operationFailed(
+            operation,
+            contextId,
+            run.has_value()
+                ? QStringLiteral("Camera run is not active.")
+                : errorMessage);
+        return;
+    }
+
+    const QString resultId =
+        QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const QString originalRelativePath =
+        QStringLiteral("originals/frame_%1_%2.png")
+            .arg(frame.transportSequence)
+            .arg(resultId);
+    const QString heatmapRelativePath =
+        QStringLiteral("heatmaps/%1.png").arg(resultId);
+    const QString originalPath =
+        QDir(run->storagePath).filePath(originalRelativePath);
+    const QString heatmapPath =
+        QDir(run->storagePath).filePath(heatmapRelativePath);
+
+    if (!isManagedRunPath(originalPath)
+        || !isManagedRunPath(heatmapPath))
+    {
+        emit operationFailed(
+            operation,
+            contextId,
+            QStringLiteral("Camera persistence path is outside the managed root."));
+        return;
+    }
+
+    QSaveFile originalFile(originalPath);
+    if (!originalFile.open(QIODevice::WriteOnly)
+        || !frame.image.save(&originalFile, "PNG")
+        || !originalFile.commit())
+    {
+        originalFile.cancelWriting();
+        emit operationFailed(
+            operation,
+            contextId,
+            QStringLiteral("Failed to atomically save camera image: %1")
+                .arg(originalFile.errorString()));
+        return;
+    }
+
+    QSaveFile heatmapFile(heatmapPath);
+    if (!heatmapFile.open(QIODevice::WriteOnly)
+        || !result.heatmapOverlay.save(&heatmapFile, "PNG")
+        || !heatmapFile.commit())
+    {
+        heatmapFile.cancelWriting();
+        QFile::remove(originalPath);
+        emit operationFailed(
+            operation,
+            contextId,
+            QStringLiteral("Failed to atomically save camera heatmap: %1")
+                .arg(heatmapFile.errorString()));
+        return;
+    }
+
+    const QFileInfo originalInfo(originalPath);
+    const qint64 completedAtMs = PersistenceWorkerUtils::currentTimeMs();
+    SqliteImmediateTransaction transaction(database);
+    QString transactionError;
+    if (!transaction.begin(&transactionError))
+    {
+        QFile::remove(originalPath);
+        QFile::remove(heatmapPath);
+        emit operationFailed(operation, contextId, transactionError);
+        return;
+    }
+
+    auto rollback =
+        [&](const QString& message)
+    {
+        QString rollbackError;
+        (void)transaction.rollback(&rollbackError);
+        QFile::remove(originalPath);
+        QFile::remove(heatmapPath);
+        emit operationFailed(
+            operation,
+            contextId,
+            rollbackError.isEmpty()
+                ? message
+                : QStringLiteral("%1 Rollback also failed: %2")
+                      .arg(message, rollbackError));
+    };
+
+    int sequenceNo = 0;
+    {
+        QSqlQuery query(database);
+        query.prepare(
+            QStringLiteral(
+                "SELECT COALESCE(MAX(sequence_no), 0) + 1 "
+                "FROM inspection_item WHERE run_id = :run_id;"));
+        query.bindValue(QStringLiteral(":run_id"), frame.runId);
+        if (!query.exec() || !query.next())
+        {
+            rollback(
+                QStringLiteral("Failed to allocate camera item sequence: %1")
+                    .arg(SqliteRepositoryUtils::formatSqlError(
+                        query.lastError())));
+            return;
+        }
+        sequenceNo = query.value(0).toInt();
+    }
+
+    {
+        QSqlQuery query(database);
+        query.prepare(
+            QStringLiteral(
+                "INSERT INTO inspection_item ("
+                "result_id, run_id, sequence_no, source_file_name, "
+                "source_file_path, source_file_size, source_modified_at_ms, "
+                "source_file_hash, transport_sequence, captured_at_ms, "
+                "pixel_format, image_width, image_height, status, "
+                "detection_level, score, inference_ms, defect_area, "
+                "heatmap_rel_path, attempt_count, processing_started_at_ms, "
+                "completed_at_ms, created_at_ms, updated_at_ms"
+                ") VALUES ("
+                ":result_id, :run_id, :sequence_no, :source_file_name, "
+                ":source_file_path, :source_file_size, :source_modified_at_ms, "
+                ":source_file_hash, :transport_sequence, :captured_at_ms, "
+                ":pixel_format, :image_width, :image_height, 'SUCCESS', "
+                ":detection_level, :score, :inference_ms, :defect_area, "
+                ":heatmap_rel_path, 1, :completed_at_ms, :completed_at_ms, "
+                ":completed_at_ms, :completed_at_ms);"));
+        query.bindValue(QStringLiteral(":result_id"), resultId);
+        query.bindValue(QStringLiteral(":run_id"), frame.runId);
+        query.bindValue(QStringLiteral(":sequence_no"), sequenceNo);
+        query.bindValue(
+            QStringLiteral(":source_file_name"),
+            originalInfo.fileName());
+        query.bindValue(
+            QStringLiteral(":source_file_path"),
+            QDir::cleanPath(originalInfo.absoluteFilePath()));
+        query.bindValue(QStringLiteral(":source_file_size"), originalInfo.size());
+        query.bindValue(
+            QStringLiteral(":source_modified_at_ms"),
+            qMax<qint64>(0, originalInfo.lastModified().toMSecsSinceEpoch()));
+        query.bindValue(
+            QStringLiteral(":source_file_hash"),
+            PersistenceWorkerUtils::sha256File(originalPath, &errorMessage));
+        query.bindValue(
+            QStringLiteral(":transport_sequence"),
+            QString::number(frame.transportSequence));
+        query.bindValue(
+            QStringLiteral(":captured_at_ms"),
+            qMax<qint64>(0, frame.capturedAtMs));
+        query.bindValue(QStringLiteral(":pixel_format"), frame.pixelFormat);
+        query.bindValue(
+            QStringLiteral(":image_width"),
+            static_cast<qulonglong>(frame.width));
+        query.bindValue(
+            QStringLiteral(":image_height"),
+            static_cast<qulonglong>(frame.height));
+        query.bindValue(
+            QStringLiteral(":detection_level"),
+            PersistenceWorkerUtils::detectionLevelText(result.detectionLevel));
+        query.bindValue(QStringLiteral(":score"), result.score);
+        query.bindValue(QStringLiteral(":inference_ms"), result.inferenceMs);
+        query.bindValue(QStringLiteral(":defect_area"), result.defectArea);
+        query.bindValue(
+            QStringLiteral(":heatmap_rel_path"),
+            heatmapRelativePath);
+        query.bindValue(QStringLiteral(":completed_at_ms"), completedAtMs);
+        if (!query.exec())
+        {
+            rollback(
+                QStringLiteral("Failed to insert camera result: %1")
+                    .arg(SqliteRepositoryUtils::formatSqlError(
+                        query.lastError())));
+            return;
+        }
+    }
+
+    const QString detectionLevel =
+        PersistenceWorkerUtils::detectionLevelText(result.detectionLevel);
+    {
+        QSqlQuery query(database);
+        query.prepare(
+            QStringLiteral(
+                "UPDATE inspection_run SET "
+                "total_count = total_count + 1, "
+                "completed_count = completed_count + 1, "
+                "ok_count = ok_count + "
+                " CASE WHEN :level = 'OK' THEN 1 ELSE 0 END, "
+                "review_count = review_count + "
+                " CASE WHEN :level = 'REVIEW' THEN 1 ELSE 0 END, "
+                "ng_count = ng_count + "
+                " CASE WHEN :level = 'NG' THEN 1 ELSE 0 END, "
+                "score_sum = score_sum + :score, "
+                "updated_at_ms = :completed_at_ms, revision = revision + 1 "
+                "WHERE run_id = :run_id AND status = 'RUNNING';"));
+        query.bindValue(QStringLiteral(":level"), detectionLevel);
+        query.bindValue(QStringLiteral(":score"), result.score);
+        query.bindValue(QStringLiteral(":completed_at_ms"), completedAtMs);
+        query.bindValue(QStringLiteral(":run_id"), frame.runId);
+        if (!query.exec() || query.numRowsAffected() != 1)
+        {
+            rollback(
+                QStringLiteral("Failed to update camera run counters: %1")
+                    .arg(SqliteRepositoryUtils::formatSqlError(
+                        query.lastError())));
+            return;
+        }
+    }
+
+    if (!transaction.commit(&transactionError))
+    {
+        rollback(
+            QStringLiteral("Failed to commit camera result: %1")
+                .arg(transactionError));
+        return;
+    }
+
+    PersistedInspectionResult persisted;
+    persisted.resultId = resultId;
+    persisted.runId = frame.runId;
+    persisted.sequenceNo = sequenceNo;
+    persisted.sourceFileName = originalInfo.fileName();
+    persisted.sourceFilePath =
+        QDir::cleanPath(originalInfo.absoluteFilePath());
+    persisted.detectionLevel = detectionLevel;
+    persisted.score = result.score;
+    persisted.inferenceMs = result.inferenceMs;
+    persisted.defectArea = result.defectArea;
+    persisted.heatmapFilePath = heatmapPath;
+    emit cameraSuccessPersisted(persisted, frame.transportSequence);
+}
+
+void PersistenceWorker::persistCameraFailure(
+    CameraPersistenceFrame frame,
+    QString errorMessage)
+{
+    const QString operation = QStringLiteral("persist_camera_failure");
+    const QString contextId = QString::number(frame.transportSequence);
+    if (!ensureReady(operation, contextId))
+    {
+        return;
+    }
+    if (frame.runId.size() != 36
+        || frame.image.isNull()
+        || frame.width == 0
+        || frame.height == 0)
+    {
+        emit operationFailed(
+            operation,
+            contextId,
+            QStringLiteral("Failed camera frame is invalid."));
+        return;
+    }
+
+    QString repositoryError;
+    QSqlDatabase database = dataBase();
+    const auto run = readRun(database, frame.runId, &repositoryError);
+    if (!run.has_value()
+        || run->sourceType != QStringLiteral("TCP_CAMERA")
+        || run->status != QStringLiteral("RUNNING"))
+    {
+        emit operationFailed(
+            operation,
+            contextId,
+            run.has_value()
+                ? QStringLiteral("Camera run is not active.")
+                : repositoryError);
+        return;
+    }
+
+    const QString resultId =
+        QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const QString originalRelativePath =
+        QStringLiteral("originals/frame_%1_%2.png")
+            .arg(frame.transportSequence)
+            .arg(resultId);
+    const QString originalPath =
+        QDir(run->storagePath).filePath(originalRelativePath);
+    if (!isManagedRunPath(originalPath))
+    {
+        emit operationFailed(
+            operation,
+            contextId,
+            QStringLiteral("Camera image path is outside the managed root."));
+        return;
+    }
+
+    QSaveFile originalFile(originalPath);
+    if (!originalFile.open(QIODevice::WriteOnly)
+        || !frame.image.save(&originalFile, "PNG")
+        || !originalFile.commit())
+    {
+        originalFile.cancelWriting();
+        emit operationFailed(
+            operation,
+            contextId,
+            QStringLiteral("Failed to atomically save failed camera image: %1")
+                .arg(originalFile.errorString()));
+        return;
+    }
+
+    const QFileInfo originalInfo(originalPath);
+    const qint64 completedAtMs = PersistenceWorkerUtils::currentTimeMs();
+    const QString finalError =
+        errorMessage.trimmed().isEmpty()
+            ? QStringLiteral("Unknown camera inference failure.")
+            : errorMessage.trimmed();
+    SqliteImmediateTransaction transaction(database);
+    QString transactionError;
+    if (!transaction.begin(&transactionError))
+    {
+        QFile::remove(originalPath);
+        emit operationFailed(operation, contextId, transactionError);
+        return;
+    }
+
+    auto rollback =
+        [&](const QString& message)
+    {
+        QString rollbackError;
+        (void)transaction.rollback(&rollbackError);
+        QFile::remove(originalPath);
+        emit operationFailed(
+            operation,
+            contextId,
+            rollbackError.isEmpty()
+                ? message
+                : QStringLiteral("%1 Rollback also failed: %2")
+                      .arg(message, rollbackError));
+    };
+
+    int sequenceNo = 0;
+    {
+        QSqlQuery query(database);
+        query.prepare(
+            QStringLiteral(
+                "SELECT COALESCE(MAX(sequence_no), 0) + 1 "
+                "FROM inspection_item WHERE run_id = :run_id;"));
+        query.bindValue(QStringLiteral(":run_id"), frame.runId);
+        if (!query.exec() || !query.next())
+        {
+            rollback(
+                QStringLiteral("Failed to allocate failed camera item: %1")
+                    .arg(SqliteRepositoryUtils::formatSqlError(
+                        query.lastError())));
+            return;
+        }
+        sequenceNo = query.value(0).toInt();
+    }
+
+    {
+        QSqlQuery query(database);
+        query.prepare(
+            QStringLiteral(
+                "INSERT INTO inspection_item ("
+                "result_id, run_id, sequence_no, source_file_name, "
+                "source_file_path, source_file_size, source_modified_at_ms, "
+                "source_file_hash, transport_sequence, captured_at_ms, "
+                "pixel_format, image_width, image_height, status, "
+                "error_message, attempt_count, processing_started_at_ms, "
+                "completed_at_ms, created_at_ms, updated_at_ms"
+                ") VALUES ("
+                ":result_id, :run_id, :sequence_no, :source_file_name, "
+                ":source_file_path, :source_file_size, :source_modified_at_ms, "
+                ":source_file_hash, :transport_sequence, :captured_at_ms, "
+                ":pixel_format, :image_width, :image_height, 'FAILED', "
+                ":error_message, 1, :completed_at_ms, :completed_at_ms, "
+                ":completed_at_ms, :completed_at_ms);"));
+        query.bindValue(QStringLiteral(":result_id"), resultId);
+        query.bindValue(QStringLiteral(":run_id"), frame.runId);
+        query.bindValue(QStringLiteral(":sequence_no"), sequenceNo);
+        query.bindValue(
+            QStringLiteral(":source_file_name"),
+            originalInfo.fileName());
+        query.bindValue(
+            QStringLiteral(":source_file_path"),
+            QDir::cleanPath(originalInfo.absoluteFilePath()));
+        query.bindValue(QStringLiteral(":source_file_size"), originalInfo.size());
+        query.bindValue(
+            QStringLiteral(":source_modified_at_ms"),
+            qMax<qint64>(0, originalInfo.lastModified().toMSecsSinceEpoch()));
+        query.bindValue(
+            QStringLiteral(":source_file_hash"),
+            PersistenceWorkerUtils::sha256File(originalPath, &repositoryError));
+        query.bindValue(
+            QStringLiteral(":transport_sequence"),
+            QString::number(frame.transportSequence));
+        query.bindValue(
+            QStringLiteral(":captured_at_ms"),
+            qMax<qint64>(0, frame.capturedAtMs));
+        query.bindValue(QStringLiteral(":pixel_format"), frame.pixelFormat);
+        query.bindValue(
+            QStringLiteral(":image_width"),
+            static_cast<qulonglong>(frame.width));
+        query.bindValue(
+            QStringLiteral(":image_height"),
+            static_cast<qulonglong>(frame.height));
+        query.bindValue(QStringLiteral(":error_message"), finalError);
+        query.bindValue(QStringLiteral(":completed_at_ms"), completedAtMs);
+        if (!query.exec())
+        {
+            rollback(
+                QStringLiteral("Failed to insert failed camera result: %1")
+                    .arg(SqliteRepositoryUtils::formatSqlError(
+                        query.lastError())));
+            return;
+        }
+    }
+
+    {
+        QSqlQuery query(database);
+        query.prepare(
+            QStringLiteral(
+                "UPDATE inspection_run SET "
+                "total_count = total_count + 1, "
+                "completed_count = completed_count + 1, "
+                "failed_count = failed_count + 1, "
+                "updated_at_ms = :completed_at_ms, revision = revision + 1 "
+                "WHERE run_id = :run_id AND status = 'RUNNING';"));
+        query.bindValue(QStringLiteral(":completed_at_ms"), completedAtMs);
+        query.bindValue(QStringLiteral(":run_id"), frame.runId);
+        if (!query.exec() || query.numRowsAffected() != 1)
+        {
+            rollback(
+                QStringLiteral("Failed to update failed camera counters: %1")
+                    .arg(SqliteRepositoryUtils::formatSqlError(
+                        query.lastError())));
+            return;
+        }
+    }
+
+    if (!transaction.commit(&transactionError))
+    {
+        rollback(
+            QStringLiteral("Failed to commit failed camera result: %1")
+                .arg(transactionError));
+        return;
+    }
+
+    InspectionItemPageRow row;
+    row.resultId = resultId;
+    row.sequenceNo = sequenceNo;
+    row.sourceFileName = originalInfo.fileName();
+    row.sourceFilePath =
+        QDir::cleanPath(originalInfo.absoluteFilePath());
+    row.status = QStringLiteral("FAILED");
+    row.errorMessage = finalError;
+    emit cameraFailurePersisted(row, frame.transportSequence);
+}
+
+void PersistenceWorker::finalizeCameraRun(
+    const QString& runId,
+    const QString& name,
+    const QString& note,
+    qint64 receivedCount,
+    qint64 droppedCount)
+{
+    const QString operation = QStringLiteral("finalize_camera_run");
+    if (!ensureReady(operation, runId))
+    {
+        return;
+    }
+
+    QString errorMessage;
+    QSqlDatabase database = dataBase();
+    auto run = readRun(database, runId, &errorMessage);
+    if (!run.has_value()
+        || run->sourceType != QStringLiteral("TCP_CAMERA")
+        || run->status != QStringLiteral("RUNNING"))
+    {
+        emit operationFailed(
+            operation,
+            runId,
+            run.has_value()
+                ? QStringLiteral("Camera run is not active.")
+                : errorMessage);
+        return;
+    }
+
+    const qint64 normalizedReceived =
+        qMax(receivedCount, run->totalCount);
+    const qint64 normalizedDropped =
+        qBound<qint64>(0, droppedCount, normalizedReceived);
+    {
+        QSqlQuery query(database);
+        query.prepare(
+            QStringLiteral(
+                "UPDATE inspection_run SET "
+                "received_count = :received_count, "
+                "dropped_count = :dropped_count, "
+                "updated_at_ms = :updated_at_ms, revision = revision + 1 "
+                "WHERE run_id = :run_id AND status = 'RUNNING';"));
+        query.bindValue(
+            QStringLiteral(":received_count"),
+            normalizedReceived);
+        query.bindValue(
+            QStringLiteral(":dropped_count"),
+            normalizedDropped);
+        query.bindValue(
+            QStringLiteral(":updated_at_ms"),
+            PersistenceWorkerUtils::currentTimeMs());
+        query.bindValue(QStringLiteral(":run_id"), runId);
+        if (!query.exec() || query.numRowsAffected() != 1)
+        {
+            emit operationFailed(
+                operation,
+                runId,
+                QStringLiteral("Failed to update camera run counters: %1")
+                    .arg(SqliteRepositoryUtils::formatSqlError(
+                        query.lastError())));
+            return;
+        }
+    }
+
+    if (run->totalCount == 0)
+    {
+        QSqlQuery query(database);
+        query.prepare(
+            QStringLiteral(
+                "DELETE FROM inspection_run "
+                "WHERE run_id = :run_id AND status = 'RUNNING';"));
+        query.bindValue(QStringLiteral(":run_id"), runId);
+        if (!query.exec() || query.numRowsAffected() != 1)
+        {
+            emit operationFailed(
+                operation,
+                runId,
+                QStringLiteral("Failed to discard empty camera run: %1")
+                    .arg(SqliteRepositoryUtils::formatSqlError(
+                        query.lastError())));
+            return;
+        }
+        if (isManagedRunPath(run->storagePath))
+        {
+            QDir(run->storagePath).removeRecursively();
+        }
+        emit cameraRunDiscarded(runId);
+        return;
+    }
+
+    if (!InspectionRunRepository::finishAsDraft(
+            database,
+            runId,
+            PersistenceWorkerUtils::currentTimeMs(),
+            &errorMessage))
+    {
+        emit operationFailed(operation, runId, errorMessage);
+        return;
+    }
+
+    run = readRun(database, runId, &errorMessage);
+    if (!run.has_value())
+    {
+        emit operationFailed(operation, runId, errorMessage);
+        return;
+    }
+
+    SaveInspectionRunRequest request;
+    request.runId = runId;
+    request.name =
+        name.trimmed().isEmpty()
+            ? QStringLiteral("TCP Camera %1")
+                  .arg(QDateTime::currentDateTime().toString(
+                      QStringLiteral("yyyy-MM-dd HH:mm:ss")))
+            : name.trimmed().left(120);
+    if (!note.trimmed().isEmpty())
+    {
+        request.note = note.trimmed().left(4000);
+    }
+    request.savedAtMs = PersistenceWorkerUtils::currentTimeMs();
+
+    if (!writeRunManifest(
+            database,
+            run.value(),
+            &request,
+            &errorMessage)
+        || !InspectionRunRepository::saveDraft(
+            database,
+            request,
+            &errorMessage))
+    {
+        emit operationFailed(operation, runId, errorMessage);
+        return;
+    }
+
+    emit cameraRunSaved(runId);
+}
+
 void PersistenceWorker::finishAsDraft(const QString& runId)
 {
     if (!ensureReady(QStringLiteral("finish_as_draft"), runId))
@@ -1007,7 +1762,9 @@ bool PersistenceWorker::writeRunManifest(
         QStringLiteral(
             "SELECT result_id, sequence_no, source_file_name, "
             "source_file_path, status, detection_level, score, "
-            "inference_ms, defect_area, heatmap_rel_path, error_message "
+            "inference_ms, defect_area, heatmap_rel_path, error_message, "
+            "transport_sequence, captured_at_ms, pixel_format, "
+            "image_width, image_height "
             "FROM inspection_item WHERE run_id = :run_id "
             "ORDER BY sequence_no ASC;"));
     query.bindValue(QStringLiteral(":run_id"), run.runId);
@@ -1085,6 +1842,10 @@ bool PersistenceWorker::writeRunManifest(
     manifest.insert(QStringLiteral("status"), QStringLiteral("SAVED"));
     manifest.insert(QStringLiteral("source_type"), run.sourceType);
     manifest.insert(QStringLiteral("source_path"), run.sourcePath);
+    if (!run.peerAddress.isEmpty())
+    {
+        manifest.insert(QStringLiteral("peer_address"), run.peerAddress);
+    }
     manifest.insert(QStringLiteral("model_path"), run.modelPath);
     manifest.insert(QStringLiteral("model_format"), run.modelFormat);
     manifest.insert(QStringLiteral("model_sha256"), run.modelHash);
@@ -1102,6 +1863,8 @@ bool PersistenceWorker::writeRunManifest(
     manifest.insert(QStringLiteral("ok_count"), run.okCount);
     manifest.insert(QStringLiteral("review_count"), run.reviewCount);
     manifest.insert(QStringLiteral("ng_count"), run.ngCount);
+    manifest.insert(QStringLiteral("received_count"), run.receivedCount);
+    manifest.insert(QStringLiteral("dropped_count"), run.droppedCount);
     manifest.insert(QStringLiteral("items_file"), itemsRelativePath);
     manifest.insert(QStringLiteral("items_sha256"), itemsSha);
 
