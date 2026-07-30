@@ -94,6 +94,8 @@ qt_add_executable(Gluttony
     Workers/CameraInferenceWorker.cpp
     Workers/LatestCameraFrameBuffer.h
     Workers/LatestCameraFrameBuffer.cpp
+    Workers/CameraInferenceController.h
+    Workers/CameraInferenceController.cpp
 
     Transport/TcpImageServer.h
     Transport/TcpImageServer.cpp
@@ -439,6 +441,45 @@ if(BUILD_TESTING)
     add_test(
         NAME GluttonyCameraInferenceWorkerTest
         COMMAND GluttonyCameraInferenceWorkerTest
+    )
+
+    qt_add_executable(GluttonyCameraInferenceControllerTest
+        tests/CameraInferenceControllerTest.cpp
+
+        Inference/InferenceEngine.h
+        Inference/InferenceEngine.cpp
+        Workers/CameraInferenceWorker.h
+        Workers/CameraInferenceWorker.cpp
+        Workers/CameraInferenceController.h
+        Workers/CameraInferenceController.cpp
+        Transport/FrameProtocol.h
+        Transport/FrameProtocol.cpp
+        Transport/FrameStreamDecoder.h
+        Transport/FrameStreamDecoder.cpp
+        Transport/ReceivedFrameImageDecoder.h
+    )
+
+    target_include_directories(
+        GluttonyCameraInferenceControllerTest
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+            ${OpenCV_INCLUDE_DIRS}
+    )
+
+    target_link_libraries(
+        GluttonyCameraInferenceControllerTest
+        PRIVATE
+            Qt::Core
+            Qt::Gui
+            Qt::Widgets
+            Qt::Test
+            openvino::runtime
+            ${OpenCV_LIBS}
+    )
+
+    add_test(
+        NAME GluttonyCameraInferenceControllerTest
+        COMMAND GluttonyCameraInferenceControllerTest
     )
 
     qt_add_executable(GluttonyPersistenceWorkerSmoke
