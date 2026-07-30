@@ -1,5 +1,21 @@
 #include "TcpImageServer.h"
 
+namespace
+{
+
+void setSendError(
+    QString* errorMessage,
+    const QString& message)
+{
+    if(errorMessage != nullptr)
+    {
+        *errorMessage = message;
+    }
+}
+
+}
+
+
 TcpImageServer::TcpImageServer(QObject* parent)
     : QObject(parent)
     , server_(new QTcpServer(this))
@@ -151,4 +167,65 @@ void TcpImageServer::attachClient(QTcpSocket* socket)
     });
 
     emit sigClientConnected(socket->peerAddress().toString(),socket->peerPort());
+}
+
+
+qint64 TcpImageServer::pendingWriteBytes() const
+{
+    if(client_.isNull())
+    {
+        return 0;
+    }
+
+    return client_->bytesToWrite();
+}
+
+
+bool TcpImageServer::sendBytes(const QByteArray& bytes, QString* errorMessage)
+{
+    if(errorMessage)
+    {
+        errorMessage->clear();
+    }
+
+    if(bytes.isEmpty())
+    {
+        setSendError(errorMessage,QStringLiteral("Cannot send an empty packet"));
+        return false;
+    }
+
+    if(client_.isNull() || client_->state() != QAbstractSocket::ConnectedState)
+    {
+        setSendError(errorMessage, QStringLiteral("No connected camera client"));
+        return false;
+    }
+
+    QTcpSocket* socket = client_.data();
+
+    const qint64 byteCount = static_cast<qint64>(bytes.size());
+
+    const qint64 pendingBytes = socket->bytesToWrite();
+
+    if(byteCount > MAX_PENDING_WRITE_BYTES || pendingBytes> MAX_PENDING_WRITE_BYTES - byteCount)
+    {
+        setSendError(errorMessage, QStringLiteral("Camera client write buffer limit exceeded"));
+        return false;
+    }
+
+    const qint64 writtenBytes = socket->write(bytes);
+
+    if(writtenBytes != byteCount)
+    {
+        QString message = socket->errorString();
+
+        if(message.isEmpty())
+        {
+            message = QStringLiteral("Failed to queue complete camera response");
+        }
+
+        setSendError(errorMessage, message);
+        return false;
+    }
+
+    return true;
 }

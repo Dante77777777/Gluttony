@@ -8,6 +8,8 @@
 #include <QAbstractSocket>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QByteArray>
+#include <QtGlobal>
 
 class QTcpServer;
 class QTcpSocket;
@@ -16,6 +18,7 @@ class TcpImageServer final : public QObject
 {
     Q_OBJECT
 public:
+    static constexpr qint64 MAX_PENDING_WRITE_BYTES = 1024 * 1024;
     explicit TcpImageServer(QObject* parent = nullptr);
 
     ~TcpImageServer() override;
@@ -29,6 +32,10 @@ public:
     quint16 listeningPort() const;
 
     bool hasClient() const;
+
+    qint64 pendingWriteBytes() const;
+
+    bool sendBytes(const QByteArray& bytes, QString* errorMessage = nullptr);
 signals:
     void sigServerStarted(quint16 port);
 
