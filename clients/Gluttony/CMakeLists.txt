@@ -452,6 +452,8 @@ if(BUILD_TESTING)
         Workers/CameraInferenceWorker.cpp
         Workers/CameraInferenceController.h
         Workers/CameraInferenceController.cpp
+        Workers/LatestCameraFrameBuffer.h
+        Workers/LatestCameraFrameBuffer.cpp
         Transport/FrameProtocol.h
         Transport/FrameProtocol.cpp
         Transport/FrameStreamDecoder.h
