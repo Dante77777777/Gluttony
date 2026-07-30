@@ -13,6 +13,7 @@ class CameraStreamReceiverTest : public QObject
 private slots:
     void initTestCase();
     void relaysServerLifecycle();
+    void stopDisconnectsClientAndClosesPort();
     void decodesFragmentedAndStickyPackets();
     void clearsPartialPacketAfterDisconnect();
     void relaysBytesToConnectedClient();
@@ -92,6 +93,65 @@ void CameraStreamReceiverTest::relaysServerLifecycle()
 
     QVERIFY(!receiver.isListening());
     QCOMPARE(stoppedSpy.count(), 1);
+}
+
+void CameraStreamReceiverTest::
+    stopDisconnectsClientAndClosesPort()
+{
+    CameraStreamReceiver receiver;
+    QVERIFY(receiver.start(
+        QHostAddress::LocalHost,
+        0));
+
+    const quint16 listeningPort =
+        receiver.listeningPort();
+    QVERIFY(listeningPort != 0);
+
+    QSignalSpy disconnectedSpy(
+        &receiver,
+        &CameraStreamReceiver::
+            sigClientDisconnected);
+    QSignalSpy stoppedSpy(
+        &receiver,
+        &CameraStreamReceiver::sigServerStopped);
+
+    QTcpSocket connectedClient;
+    connectClient(receiver, connectedClient);
+
+    receiver.stop();
+
+    QVERIFY(!receiver.isListening());
+    QVERIFY(!receiver.hasClient());
+    QCOMPARE(disconnectedSpy.count(), 1);
+    QCOMPARE(stoppedSpy.count(), 1);
+    QTRY_COMPARE_WITH_TIMEOUT(
+        connectedClient.state(),
+        QAbstractSocket::UnconnectedState,
+        2000);
+
+    /*
+     * 服务关闭后，同一端口不再接受新连接。
+     */
+    QTcpSocket refusedClient;
+    refusedClient.connectToHost(
+        QHostAddress::LocalHost,
+        listeningPort);
+    QVERIFY(!refusedClient.waitForConnected(500));
+
+    /*
+     * 再次启用服务后，同一端口恢复可连接。
+     */
+    QString errorMessage;
+    QVERIFY2(
+        receiver.start(
+            QHostAddress::LocalHost,
+            listeningPort,
+            &errorMessage),
+        qPrintable(errorMessage));
+
+    QTcpSocket reconnectedClient;
+    connectClient(receiver, reconnectedClient);
+    QVERIFY(receiver.hasClient());
 }
 
 void CameraStreamReceiverTest::
