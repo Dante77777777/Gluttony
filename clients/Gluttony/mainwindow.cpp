@@ -12,6 +12,7 @@
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QTableWidget>
 #include <QTimer>
 #include <QUuid>
@@ -164,6 +165,11 @@ void MainWindow::setupToolBar()
         &QAction::triggered,
         this,
         &MainWindow::onBatchManagerActionTriggered);
+    connect(
+        topToolBar->ui->cameraTcpAction,
+        &QAction::toggled,
+        this,
+        &MainWindow::onCameraTcpActionToggled);
 
     connect(
         topToolBar->ui->zoomOutAction,
@@ -278,7 +284,11 @@ void MainWindow::setupUI()
 
 bool MainWindow::isCameraFrameProcessingAllowed() const
 {
-    return !closing && detectionStatus == DetectionStatus::IDLE && activeRunStatus != QStringLiteral("DRAFT");
+    return cameraTcpEnabled
+        && cameraClientConnected
+        && !closing
+        && detectionStatus == DetectionStatus::IDLE
+        && activeRunStatus != QStringLiteral("DRAFT");
 }
 
 
@@ -368,6 +378,10 @@ void MainWindow::initializeCameraFrameSource()
         this,
         [this](quint16 port)
         {
+            cameraTcpEnabled = true;
+            setCameraTcpActionState(true);
+            updateActionStates();
+
             statusBar->ui->readyLabel->setText(
                 QStringLiteral(
                     "Camera server listening on port %1")
@@ -385,6 +399,11 @@ void MainWindow::initializeCameraFrameSource()
         this,
         [this]()
         {
+            cameraTcpEnabled = false;
+            cameraClientConnected = false;
+            setCameraTcpActionState(false);
+            updateActionStates();
+
             if(!closing)
             {
                 statusBar->ui->readyLabel->setText(
@@ -405,6 +424,9 @@ void MainWindow::initializeCameraFrameSource()
             const QString& peerAddress,
             quint16 peerPort)
         {
+            cameraClientConnected = true;
+            updateActionStates();
+
             statusBar->ui->readyLabel->setText(
                 QStringLiteral(
                     "Camera connected: %1:%2")
@@ -424,12 +446,24 @@ void MainWindow::initializeCameraFrameSource()
         this,
         [this]()
         {
-            statusBar->ui->readyLabel->setText(
-                QStringLiteral(
-                    "Waiting for camera on port %1")
-                    .arg(
-                        MainWindowUtils::
-                        CAMERA_STREAM_PORT));
+            cameraClientConnected = false;
+            updateActionStates();
+
+            if(cameraTcpEnabled)
+            {
+                statusBar->ui->readyLabel->setText(
+                    QStringLiteral(
+                        "Waiting for camera on port %1")
+                        .arg(
+                            MainWindowUtils::
+                            CAMERA_STREAM_PORT));
+            }
+            else
+            {
+                statusBar->ui->readyLabel->setText(
+                    QStringLiteral(
+                        "Camera TCP service disabled"));
+            }
 
             QWARNING(
                 QStringLiteral(
@@ -482,10 +516,18 @@ void MainWindow::initializeCameraFrameSource()
         cameraFrameSource,
         &CameraFrameSource::sigImageDecodeError,
         this,
-        [](
+        [this](
             quint64 sequence,
             const QString& errorMessage)
         {
+            sendCameraInferenceError(
+                sequence,
+                QStringLiteral("IMAGE_DECODE_FAILED"),
+                errorMessage.isEmpty()
+                    ? QStringLiteral(
+                          "Failed to decode camera image")
+                    : errorMessage);
+
             QWARNING(
                 QStringLiteral(
                     "Camera frame %1 decode error: %2")
@@ -506,6 +548,74 @@ void MainWindow::initializeCameraFrameSource()
                     .arg(bufferedBytes));
         });
 
+    cameraTcpEnabled = false;
+    cameraClientConnected = false;
+    setCameraTcpActionState(false);
+}
+
+void MainWindow::setCameraTcpActionState(
+    bool enabled)
+{
+    if(topToolBar == nullptr
+        || topToolBar->ui == nullptr
+        || topToolBar->ui->cameraTcpAction == nullptr)
+    {
+        return;
+    }
+
+    const QSignalBlocker blocker(
+        topToolBar->ui->cameraTcpAction);
+
+    topToolBar->ui->cameraTcpAction->
+        setChecked(enabled);
+    topToolBar->ui->cameraTcpAction->setText(
+        enabled
+            ? QStringLiteral("TCP On")
+            : QStringLiteral("TCP Off"));
+}
+
+void MainWindow::onCameraTcpActionToggled(
+    bool enabled)
+{
+    if(cameraFrameSource == nullptr)
+    {
+        cameraTcpEnabled = false;
+        cameraClientConnected = false;
+        setCameraTcpActionState(false);
+        updateActionStates();
+        return;
+    }
+
+    if(!enabled)
+    {
+        /*
+         * stop() 会中止当前客户端并关闭监听端口。
+         * 先更新状态，确保断线回调显示 Disabled。
+         */
+        cameraTcpEnabled = false;
+        cameraClientConnected = false;
+        cameraFrameSource->stop();
+        setCameraTcpActionState(false);
+        updateActionStates();
+
+        statusBar->ui->readyLabel->setText(
+            QStringLiteral(
+                "Camera TCP service disabled"));
+        return;
+    }
+
+    if(detectionStatus != DetectionStatus::IDLE
+        || activeRunStatus == QStringLiteral("DRAFT"))
+    {
+        setCameraTcpActionState(false);
+        statusBar->ui->readyLabel->setText(
+            QStringLiteral(
+                "Finish the local inspection before "
+                "enabling Camera TCP"));
+        updateActionStates();
+        return;
+    }
+
     QString errorMessage;
 
     if(!cameraFrameSource->start(
@@ -513,15 +623,63 @@ void MainWindow::initializeCameraFrameSource()
             MainWindowUtils::CAMERA_STREAM_PORT,
             &errorMessage))
     {
+        cameraTcpEnabled = false;
+        cameraClientConnected = false;
+        setCameraTcpActionState(false);
+        updateActionStates();
+
         statusBar->ui->readyLabel->setText(
             QStringLiteral(
-                "Camera server failed to start"));
+                "Camera TCP service failed to start"));
 
-        QCRITICAL(
+        QWARNING(
             QStringLiteral(
-                "Failed to start camera server: %1")
+                "Failed to start camera TCP service: %1")
                 .arg(errorMessage));
     }
+}
+
+bool MainWindow::sendCameraInferenceError(
+    quint64 sequence,
+    const QString& errorCode,
+    const QString& message)
+{
+    if(cameraFrameSource == nullptr
+        || !cameraFrameSource->hasClient())
+    {
+        return false;
+    }
+
+    InferenceResponseCodec::InferenceErrorPayload
+        payload;
+    payload.errorCode =
+        errorCode.trimmed().left(
+            InferenceResponseCodec::
+                MAX_ERROR_CODE_LENGTH);
+    payload.message =
+        message.trimmed().left(
+            InferenceResponseCodec::
+                MAX_ERROR_MESSAGE_LENGTH);
+
+    QString responseError;
+    const bool sent =
+        cameraFrameSource->sendInferenceError(
+            sequence,
+            payload,
+            &responseError);
+
+    if(!sent)
+    {
+        QWARNING(
+            QStringLiteral(
+                "Failed to send camera error response"
+                " | Sequence=%1 | Code=%2 | %3")
+                .arg(sequence)
+                .arg(payload.errorCode)
+                .arg(responseError));
+    }
+
+    return sent;
 }
 
 
@@ -689,6 +847,15 @@ void MainWindow::onImageSelected(
     const QImage& image,
     const QString& imagePath)
 {
+    if(cameraTcpEnabled || cameraClientConnected)
+    {
+        statusBar->ui->readyLabel->setText(
+            QStringLiteral(
+                "Disable Camera TCP before selecting "
+                "a local image"));
+        return;
+    }
+
     Q_UNUSED(image);
     selectedImagePath =
         QDir::cleanPath(QFileInfo(imagePath).absoluteFilePath());
@@ -699,6 +866,15 @@ void MainWindow::onImageSelected(
 
 void MainWindow::onFolderSelected(const QString& folderPath)
 {
+    if(cameraTcpEnabled || cameraClientConnected)
+    {
+        statusBar->ui->readyLabel->setText(
+            QStringLiteral(
+                "Disable Camera TCP before selecting "
+                "a local folder"));
+        return;
+    }
+
     selectedFolderPath =
         QDir::cleanPath(QFileInfo(folderPath).absoluteFilePath());
     selectedImagePath.clear();
@@ -708,6 +884,15 @@ void MainWindow::onFolderSelected(const QString& folderPath)
 
 void MainWindow::onStartActionTriggered()
 {
+    if(cameraTcpEnabled || cameraClientConnected)
+    {
+        statusBar->ui->readyLabel->setText(
+            QStringLiteral(
+                "Disable Camera TCP before starting "
+                "a local inspection"));
+        return;
+    }
+
     if (detectionStatus == DetectionStatus::PAUSED)
     {
         detectionStatus = DetectionStatus::RUNNING;
@@ -1736,14 +1921,44 @@ void MainWindow::onCameraFrameReady(const DecodedCameraFrame& frame)
 {
     if(!isCameraFrameProcessingAllowed())
     {
+        sendCameraInferenceError(
+            frame.header.sequence,
+            QStringLiteral("SERVER_BUSY"),
+            QStringLiteral(
+                "Gluttony is not available for TCP "
+                "camera inference"));
         return;
     }
 
     if(frame.image.isNull())
     {
+        sendCameraInferenceError(
+            frame.header.sequence,
+            QStringLiteral("INVALID_IMAGE"),
+            QStringLiteral(
+                "Decoded camera frame is empty"));
+
         QWARNING(
             QStringLiteral(
                 "Camera frame %1 is empty")
+                .arg(frame.header.sequence));
+        return;
+    }
+
+    if(cameraInferenceController == nullptr
+        || !inferenceEngine.isLoaded()
+        || loadedModelPath.isEmpty()
+        || !cameraInferenceController->isReady())
+    {
+        sendCameraInferenceError(
+            frame.header.sequence,
+            QStringLiteral("MODEL_NOT_READY"),
+            QStringLiteral(
+                "The camera inference model is not ready"));
+
+        statusBar->ui->readyLabel->setText(
+            QStringLiteral(
+                "Camera frame %1 rejected: model not ready")
                 .arg(frame.header.sequence));
         return;
     }
@@ -1761,11 +1976,7 @@ void MainWindow::onCameraFrameReady(const DecodedCameraFrame& frame)
             "Camera frame %1 received")
             .arg(frame.header.sequence));
 
-    if(cameraInferenceController != nullptr
-        && cameraInferenceController->isRunning())
-    {
-        cameraInferenceController->submitFrame(frame);
-    }
+    cameraInferenceController->submitFrame(frame);
 }
 
 
@@ -1915,15 +2126,38 @@ void MainWindow::refreshStatusBar(const QString& stateText)
 
 void MainWindow::setInputSelectionEnabled(bool enabled)
 {
-    paramWidget->ui->selectImage->setEnabled(enabled);
-    paramWidget->ui->selectFolder->setEnabled(enabled);
-    topToolBar->ui->openImageAction->setEnabled(enabled);
-    topToolBar->ui->openFolderAction->setEnabled(enabled);
+    const bool localInputEnabled =
+        enabled
+        && !cameraTcpEnabled
+        && !cameraClientConnected;
+
+    paramWidget->ui->imagePath->
+        setEnabled(localInputEnabled);
+    paramWidget->ui->selectImage->
+        setEnabled(localInputEnabled);
+    paramWidget->ui->selectFolder->
+        setEnabled(localInputEnabled);
+    topToolBar->ui->openImageAction->
+        setEnabled(localInputEnabled);
+    topToolBar->ui->openFolderAction->
+        setEnabled(localInputEnabled);
 }
 
 void MainWindow::updateActionStates()
 {
+    const bool localModeAvailable =
+        !cameraTcpEnabled
+        && !cameraClientConnected;
+    const bool canSelectLocalInput =
+        localModeAvailable
+        && detectionStatus == DetectionStatus::IDLE
+        && activeRunStatus != QStringLiteral("DRAFT");
+
+    setInputSelectionEnabled(canSelectLocalInput);
+
     const bool canStartNew =
+        localModeAvailable
+        &&
         persistenceReady
         && detectionStatus == DetectionStatus::IDLE
         && activeRunStatus != QStringLiteral("DRAFT")
@@ -1941,9 +2175,16 @@ void MainWindow::updateActionStates()
     topToolBar->ui->discardBatchAction->setEnabled(
         activeRunStatus == QStringLiteral("DRAFT"));
     topToolBar->ui->batchManagerAction->setEnabled(
+        localModeAvailable
+        &&
         persistenceReady
         && detectionStatus == DetectionStatus::IDLE
         && activeRunStatus != QStringLiteral("DRAFT"));
+    topToolBar->ui->cameraTcpAction->setEnabled(
+        cameraTcpEnabled
+        || (detectionStatus == DetectionStatus::IDLE
+            && activeRunStatus
+                != QStringLiteral("DRAFT")));
 }
 
 void MainWindow::clearActiveRun()

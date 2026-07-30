@@ -62,6 +62,7 @@ private slots:
     void onDiscardBatchActionTriggered();
     void onBatchManagerActionTriggered();
     void onRecordClicked(const DetectionRecord& record);
+    void onCameraTcpActionToggled(bool enabled);
 
     void onPersistenceInitialized(bool success,const QString& errorMessage);
     void onInterruptedRunsReady(const InspectionRunRecords& runs);
@@ -94,6 +95,11 @@ private:
     void initializePersistence();
     bool isCameraFrameProcessingAllowed() const;
     void initializeCameraInferenceController();
+    void setCameraTcpActionState(bool enabled);
+    bool sendCameraInferenceError(
+        quint64 sequence,
+        const QString& errorCode,
+        const QString& message);
 
     void beginNewRun(const QString& sourceType, const QString& sourcePath);
     void startInferenceWorker(const QString& modelPath,const InferenceOptions& options);
@@ -182,6 +188,8 @@ private:
     bool itemInFlight = false;
     bool persistenceInFlight = false;
     bool finishInFlight = false;
+    bool cameraTcpEnabled = false;
+    bool cameraClientConnected = false;
     bool closing = false;
     bool closeAfterSave = false;
 

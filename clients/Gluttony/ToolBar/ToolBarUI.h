@@ -16,6 +16,7 @@ public:
     QAction* saveBatchAction;
     QAction* discardBatchAction;
     QAction* batchManagerAction;
+    QAction* cameraTcpAction;
     QAction* zoomInAction;
     QAction* zoomOutAction;
     QAction* fitAction;
@@ -48,6 +49,17 @@ public:
         batchManagerAction =
             new QAction(QIcon(":/refer.png"), "Batches", parent);
         batchManagerAction->setEnabled(false);
+        cameraTcpAction = new QAction(
+            parent->style()->standardIcon(
+                QStyle::SP_DriveNetIcon),
+            "TCP Off",
+            parent);
+        cameraTcpAction->setObjectName(
+            "CameraTcpAction");
+        cameraTcpAction->setCheckable(true);
+        cameraTcpAction->setChecked(false);
+        cameraTcpAction->setToolTip(
+            "Enable or disable the industrial camera TCP service");
         zoomInAction = new QAction(QIcon(":/zoom in.png"),"Zoom In",parent);
         zoomOutAction = new QAction(QIcon(":/zoom out.png"),"Zoom Out",parent);
         fitAction = new QAction(QIcon(":/scale-up.png"),"Fit",parent);
@@ -67,6 +79,9 @@ public:
         topToolBar->addAction(saveBatchAction);
         topToolBar->addAction(discardBatchAction);
         topToolBar->addAction(batchManagerAction);
+        topToolBar->addSeparator();
+
+        topToolBar->addAction(cameraTcpAction);
         topToolBar->addSeparator();
 
         topToolBar->addAction(zoomInAction);
