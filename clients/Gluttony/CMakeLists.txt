@@ -92,6 +92,8 @@ qt_add_executable(Gluttony
     Workers/ImageWorker.cpp
     Workers/CameraInferenceWorker.h
     Workers/CameraInferenceWorker.cpp
+    Workers/LatestCameraFrameBuffer.h
+    Workers/LatestCameraFrameBuffer.cpp
 
     Transport/TcpImageServer.h
     Transport/TcpImageServer.cpp
@@ -313,6 +315,32 @@ if(BUILD_TESTING)
     add_test(
         NAME GluttonyCameraFrameSourceTest
         COMMAND GluttonyCameraFrameSourceTest
+    )
+
+    qt_add_executable(GluttonyLatestCameraFrameBufferTest
+        tests/LatestCameraFrameBufferTest.cpp
+
+        Workers/LatestCameraFrameBuffer.h
+        Workers/LatestCameraFrameBuffer.cpp
+    )
+
+    target_include_directories(
+        GluttonyLatestCameraFrameBufferTest
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    target_link_libraries(
+        GluttonyLatestCameraFrameBufferTest
+        PRIVATE
+            Qt::Core
+            Qt::Gui
+            Qt::Test
+    )
+
+    add_test(
+        NAME GluttonyLatestCameraFrameBufferTest
+        COMMAND GluttonyLatestCameraFrameBufferTest
     )
 
     qt_add_executable(GluttonyPersistenceSmoke
