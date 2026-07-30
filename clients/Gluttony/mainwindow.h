@@ -85,6 +85,8 @@ private slots:
     void onRunInterrupted(const QString& runId);
     void onCameraFrameReady(const DecodedCameraFrame& frame);
 
+    void onCameraInferenceFinished(const DecodedCameraFrame& frame, const InferenceResult& result);
+
 private:
     void setupUI();
     void setupToolBar();

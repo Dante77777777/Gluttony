@@ -272,6 +272,21 @@ void MainWindow::initializeCameraInferenceController()
     connect(cameraInferenceController,&CameraInferenceController::sigInitializationFailed,this,[this](const QString& errorMessage){
         statusBar->ui->readyLabel->setText(QStringLiteral("Camera inference initialization failed"));
         QWARNING(QStringLiteral("Camera inference initialization failed: %1").arg(errorMessage));
+        cameraInferenceController->stop();
+    });
+
+    connect(cameraInferenceController,&CameraInferenceController::sigFrameFinished,this, &MainWindow::onCameraInferenceFinished);
+
+    connect(cameraInferenceController,&CameraInferenceController::sigFrameFailed,this,[this](quint64 sequence, const QString& errorMessage){
+        statusBar->ui->readyLabel->setText(QStringLiteral("Camera frame %1 inference failed").arg(sequence));
+        QWARNING(QStringLiteral("Camera frame inference failed | Sequence=%1 | %2").arg(sequence).arg(errorMessage));
+    });
+
+    connect(cameraInferenceController,&CameraInferenceController::sigFrameDropped,this,[](quint64 sequence, quint64 totalDroppedCount){
+        if(totalDroppedCount == 1ULL || totalDroppedCount % 100ULL == 0ULL)
+        {
+            QDEBUG(QStringLiteral("Camera frame replaced by newer frame | Sequence=%1 | TotalDropped=%2").arg(sequence).arg(totalDroppedCount));
+        }
     });
 
     connect(cameraInferenceController,&CameraInferenceController::sigStopped,this,[](){
@@ -1679,6 +1694,12 @@ void MainWindow::onCameraFrameReady(
         QStringLiteral(
             "Camera frame %1 received")
             .arg(frame.header.sequence));
+
+    if(cameraInferenceController != nullptr
+        && cameraInferenceController->isRunning())
+    {
+        cameraInferenceController->submitFrame(frame);
+    }
 }
 
 
@@ -1972,4 +1993,25 @@ void MainWindow::discardActiveDraftBlocking()
             worker->discardDraft(runId);
         },
         Qt::BlockingQueuedConnection);
+}
+
+
+void MainWindow::onCameraInferenceFinished(const DecodedCameraFrame& frame, const InferenceResult& result)
+{
+    viewWidget->ui->originalGV->setImage(frame.image);
+    viewWidget->setOriginalImagePath(QStringLiteral("Camera_Frame_%1.jpg").arg(frame.header.sequence));
+
+    if(result.heatmapOverlay.isNull())
+    {
+        viewWidget->ui->resultGV->clearImageInfo();
+        QWARNING(QStringLiteral("Camera inference heatmap is empty | Sequence=%1").arg(frame.header.sequence));
+    }
+    else
+    {
+        viewWidget->ui->resultGV->setImage(result.heatmapOverlay);
+    }
+    quickResWidget->ui->setNG(result.detectionLevel,result.score);
+    quickResWidget->ui->setMetrics(result.inferenceMs,result.defectArea);
+
+    statusBar->ui->readyLabel->setText(QStringLiteral("Camera frame %1 inferred in %2 ms").arg(frame.header.sequence).arg(result.inferenceMs));
 }
