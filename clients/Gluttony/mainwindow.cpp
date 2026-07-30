@@ -42,6 +42,23 @@ QString displayFileName(const QString& path)
         .arg(info.dir().dirName(), info.fileName());
 }
 
+QString detectionLevelToText(DetectionLevel level)
+{
+    switch(level)
+    {
+    case DetectionLevel::OK:
+        return QStringLiteral("OK");
+
+    case DetectionLevel::REVIEW:
+        return QStringLiteral("REVIEW");
+
+    case DetectionLevel::NG:
+        return QStringLiteral("NG");
+    }
+
+    return QStringLiteral("OK");
+}
+
 }
 
 MainWindow::MainWindow(
@@ -284,6 +301,25 @@ void MainWindow::initializeCameraInferenceController()
     connect(cameraInferenceController,&CameraInferenceController::sigFrameFinished,this, &MainWindow::onCameraInferenceFinished);
 
     connect(cameraInferenceController,&CameraInferenceController::sigFrameFailed,this,[this](quint64 sequence, const QString& errorMessage){
+        if(cameraFrameSource != nullptr && cameraFrameSource->hasClient())
+        {
+            InferenceResponseCodec::InferenceErrorPayload payload;
+            payload.errorCode = QStringLiteral("INFERENCE_FAILED");
+
+            payload.message = errorMessage.trimmed();
+            if(payload.message.isEmpty())
+            {
+                payload.message = QStringLiteral("Camera inference failed");
+            }
+            payload.message = payload.message.left(InferenceResponseCodec::MAX_ERROR_MESSAGE_LENGTH);
+
+            QString responseError;
+
+            if(!cameraFrameSource->sendInferenceError(sequence,payload,&responseError))
+            {
+                QWARNING(QStringLiteral("Failed to send inference error"" | Sequence=%1 | %2").arg(sequence).arg(responseError));
+            }
+        }
         if(!isCameraFrameProcessingAllowed())
         {
             return;
@@ -292,10 +328,26 @@ void MainWindow::initializeCameraInferenceController()
         QWARNING(QStringLiteral("Camera frame inference failed | Sequence=%1 | %2").arg(sequence).arg(errorMessage));
     });
 
-    connect(cameraInferenceController,&CameraInferenceController::sigFrameDropped,this,[](quint64 sequence, quint64 totalDroppedCount){
-        if(totalDroppedCount == 1ULL || totalDroppedCount % 100ULL == 0ULL)
+    connect(cameraInferenceController,&CameraInferenceController::sigFrameDropped,this,[this](quint64 sequence, quint64 totalDroppedCount){
+        bool responseSent = true;
+        QString responseError;
+        if(cameraFrameSource != nullptr && cameraFrameSource->hasClient())
+        {
+            InferenceResponseCodec::InferenceErrorPayload payload;
+            payload.errorCode = QStringLiteral("FRAME_DROPPED");
+            payload.message = QStringLiteral("Frame replaced by a newer frame; total dropped: %1").arg(totalDroppedCount);
+            responseSent = cameraFrameSource->sendInferenceError(sequence, payload, &responseError);
+        }
+
+        const bool shouldLog = totalDroppedCount == 1ULL || totalDroppedCount % 100ULL == 0ULL;
+
+        if(shouldLog)
         {
             QDEBUG(QStringLiteral("Camera frame replaced by newer frame | Sequence=%1 | TotalDropped=%2").arg(sequence).arg(totalDroppedCount));
+            if(!responseSent)
+            {
+                QWARNING(QStringLiteral("Failed to send dropped-frame response | Sequence=%1 | %2").arg(sequence).arg(responseError));
+            }
         }
     });
 
@@ -2012,6 +2064,21 @@ void MainWindow::discardActiveDraftBlocking()
 
 void MainWindow::onCameraInferenceFinished(const DecodedCameraFrame& frame, const InferenceResult& result)
 {
+    if(cameraFrameSource && cameraFrameSource->hasClient())
+    {
+        InferenceResponseCodec::InferenceResultPayload payload;
+        payload.detectionLevel = MainWindowUtils::detectionLevelToText(result.detectionLevel);
+        payload.score = static_cast<double>(result.score);
+        payload.inferenceMs = result.inferenceMs;
+        payload.defectArea = result.defectArea;
+
+        QString responseError;
+        if(!cameraFrameSource->sendInferenceResult(frame.header.sequence,payload,&responseError))
+        {
+            QWARNING(QStringLiteral("Failed to send inference result | Sequence=%1 | %2").arg(frame.header.sequence).arg(responseError));
+        }
+    }
+
     if(!isCameraFrameProcessingAllowed())
     {
         return;
