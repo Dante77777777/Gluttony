@@ -24,7 +24,10 @@ enum class MessageType : quint16
     ImageFrame = 1,
     Heartbeat = 2,
     InferenceResult = 3,
-    InferenceError = 4
+    InferenceError = 4,
+    StreamStart = 5,
+    StreamStop = 6,
+    StopAcquisitionRequest = 7
 };
 
 enum class PixelFormat : quint16

@@ -89,6 +89,39 @@ bool CameraFrameSource::sendInferenceError(quint64 sequence, const InferenceResp
     return sendResponsePacket(FrameProtocol::MessageType::InferenceError,sequence,jsonByte,errorMessage);
 }
 
+bool CameraFrameSource::sendStopAcquisitionRequest(
+    quint64 requestSequence,
+    QString* errorMessage)
+{
+    return sendResponsePacket(
+        FrameProtocol::MessageType::StopAcquisitionRequest,
+        requestSequence,
+        {},
+        errorMessage);
+}
+
+bool CameraFrameSource::validateControlPacket(
+    const ReceivedFramePacket& packet,
+    QString* errorMessage) const
+{
+    if (!packet.payload.isEmpty()
+        || packet.header.pixelFormat
+               != FrameProtocol::PixelFormat::Unknown
+        || packet.header.width != 0
+        || packet.header.height != 0)
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage =
+                QStringLiteral(
+                    "Control packet must have an empty payload "
+                    "and no image metadata");
+        }
+        return false;
+    }
+    return true;
+}
+
 
 bool CameraFrameSource::sendResponsePacket(FrameProtocol::MessageType messageType, quint64 sequence, const QByteArray& payload, QString* errorMessage)
 {
@@ -121,6 +154,34 @@ void CameraFrameSource::onPacketReceived(const ReceivedFramePacket& packet)
     if(packet.header.messageType == FrameProtocol::MessageType::Heartbeat)
     {
         emit sigHeartbeatReceived(packet.header.sequence, packet.header.timestampMs);
+        return;
+    }
+
+    if (packet.header.messageType
+            == FrameProtocol::MessageType::StreamStart
+        || packet.header.messageType
+               == FrameProtocol::MessageType::StreamStop)
+    {
+        QString errorMessage;
+        if (!validateControlPacket(packet, &errorMessage))
+        {
+            emit sigProtocolError(errorMessage);
+            return;
+        }
+
+        if (packet.header.messageType
+            == FrameProtocol::MessageType::StreamStart)
+        {
+            emit sigStreamStarted(
+                packet.header.sequence,
+                packet.header.timestampMs);
+        }
+        else
+        {
+            emit sigStreamStopped(
+                packet.header.sequence,
+                packet.header.timestampMs);
+        }
         return;
     }
 

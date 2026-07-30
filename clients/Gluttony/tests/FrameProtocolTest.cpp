@@ -12,6 +12,7 @@ private slots:
     void fragmentedPacketWaitsForMoreBytes();
     void stickyPacketsDecodeInOrder();
     void inferenceMessagesRoundTrip();
+    void controlMessagesRoundTrip();
     void invalidHeadersAreRejected();
 };
 
@@ -306,6 +307,47 @@ void FrameProtocolTest::inferenceMessagesRoundTrip()
         QCOMPARE(actualHeader.width, 0U);
         QCOMPARE(actualHeader.height, 0U);
         QCOMPARE(actualPayload, expectedPayload);
+    }
+}
+
+void FrameProtocolTest::controlMessagesRoundTrip()
+{
+    const QList<FrameProtocol::MessageType> messageTypes{
+        FrameProtocol::MessageType::StreamStart,
+        FrameProtocol::MessageType::StreamStop,
+        FrameProtocol::MessageType::StopAcquisitionRequest
+    };
+
+    for(const auto messageType : messageTypes)
+    {
+        FrameProtocol::FrameHeader expectedHeader;
+        expectedHeader.messageType = messageType;
+        expectedHeader.pixelFormat =
+            FrameProtocol::PixelFormat::Unknown;
+        expectedHeader.sequence = 8100
+            + static_cast<quint16>(messageType);
+        expectedHeader.timestampMs = 1'785'211'200'000ULL;
+
+        QByteArray receiveBuffer =
+            FrameProtocol::encodePacket(expectedHeader, {});
+        FrameProtocol::FrameHeader actualHeader;
+        QByteArray actualPayload;
+        QString errorMessage;
+
+        QCOMPARE(
+            FrameProtocol::tryDecodePacket(
+                receiveBuffer,
+                actualHeader,
+                actualPayload,
+                &errorMessage),
+            FrameProtocol::DecodeResult::Complete);
+        QVERIFY(errorMessage.isEmpty());
+        QCOMPARE(actualHeader.messageType, messageType);
+        QCOMPARE(
+            actualHeader.sequence,
+            expectedHeader.sequence);
+        QVERIFY(actualPayload.isEmpty());
+        QVERIFY(receiveBuffer.isEmpty());
     }
 }
 

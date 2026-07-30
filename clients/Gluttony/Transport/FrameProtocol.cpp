@@ -15,7 +15,10 @@ bool isKnownMessageType(quint16 value)
     return value == static_cast<quint16>(FrameProtocol::MessageType::ImageFrame)
         || value == static_cast<quint16>(FrameProtocol::MessageType::Heartbeat)
         || value == static_cast<quint16>(FrameProtocol::MessageType::InferenceResult)
-        || value == static_cast<quint16>(FrameProtocol::MessageType::InferenceError);
+        || value == static_cast<quint16>(FrameProtocol::MessageType::InferenceError)
+        || value == static_cast<quint16>(FrameProtocol::MessageType::StreamStart)
+        || value == static_cast<quint16>(FrameProtocol::MessageType::StreamStop)
+        || value == static_cast<quint16>(FrameProtocol::MessageType::StopAcquisitionRequest);
 }
 
 }
