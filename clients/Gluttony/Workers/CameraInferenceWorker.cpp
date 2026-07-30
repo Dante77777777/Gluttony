@@ -28,13 +28,13 @@ void CameraInferenceWorker::processFrame(const DecodedCameraFrame& frame)
 {
     if(!ready_)
     {
-        emit sigFrameFailed(frame.header.sequence,QStringLiteral("Camera inference worker is not ready"));
+        emit sigFrameFailed(frame,QStringLiteral("Camera inference worker is not ready"));
         return ;
     }
 
     if(frame.image.isNull())
     {
-        emit sigFrameFailed(frame.header.sequence,QStringLiteral("Camera frame image is empty"));
+        emit sigFrameFailed(frame,QStringLiteral("Camera frame image is empty"));
         return ;
     }
 
@@ -43,7 +43,7 @@ void CameraInferenceWorker::processFrame(const DecodedCameraFrame& frame)
 
     if(!inferenceEngine_.inferImage(frame.image,options_,&result,&errorMessage))
     {
-        emit sigFrameFailed(frame.header.sequence,errorMessage);
+        emit sigFrameFailed(frame,errorMessage);
         return ;
     }
 

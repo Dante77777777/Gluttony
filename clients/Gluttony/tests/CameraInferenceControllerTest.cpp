@@ -107,7 +107,9 @@ void CameraInferenceControllerTest::
 
     QCOMPARE(failedSpy.count(), 1);
     QCOMPARE(
-        failedSpy.first().at(0).toULongLong(),
+        failedSpy.first().at(0)
+            .value<DecodedCameraFrame>()
+            .header.sequence,
         3001ULL);
     QVERIFY(
         failedSpy.first().at(1).toString()

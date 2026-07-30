@@ -63,14 +63,14 @@ void CameraInferenceController::start(QString modelPath, InferenceOptions option
         dispatchNextPendingFrame();
     });
 
-    connect(worker_,&CameraInferenceWorker::sigFrameFailed,this,[this, generation](quint64 sequence, const QString& errorMessage){
+    connect(worker_,&CameraInferenceWorker::sigFrameFailed,this,[this, generation](const DecodedCameraFrame& frame, const QString& errorMessage){
         if(generation != sessionGeneration_)
         {
             return ;
         }
 
         busy_ = false;
-        emit sigFrameFailed(sequence,errorMessage);
+        emit sigFrameFailed(frame,errorMessage);
         dispatchNextPendingFrame();
     });
 
@@ -106,10 +106,9 @@ void CameraInferenceController::stop()
 
 void CameraInferenceController::submitFrame(DecodedCameraFrame frame)
 {
-    const quint64 sequence = frame.header.sequence;
     if(!isRunning() || worker_.isNull())
     {
-        emit sigFrameFailed(sequence,QStringLiteral("Camera inference controller is not running"));
+        emit sigFrameFailed(frame,QStringLiteral("Camera inference controller is not running"));
         return ;
     }
 
@@ -128,10 +127,9 @@ void CameraInferenceController::submitFrame(DecodedCameraFrame frame)
 
 void CameraInferenceController::dispatchFrame(DecodedCameraFrame frame)
 {
-    const quint64 sequence = frame.header.sequence;
     if(!ready_ || busy_ || worker_.isNull())
     {
-        emit sigFrameFailed(sequence,QStringLiteral("Camera inference worker is unavailable"));
+        emit sigFrameFailed(frame,QStringLiteral("Camera inference worker is unavailable"));
         return ;
     }
 
@@ -145,7 +143,7 @@ void CameraInferenceController::dispatchFrame(DecodedCameraFrame frame)
     if(!queued)
     {
         busy_ = false;
-        emit sigFrameFailed(sequence,QStringLiteral("Failed to queue camera inference frame"));
+        emit sigFrameFailed(frame,QStringLiteral("Failed to queue camera inference frame"));
         dispatchNextPendingFrame();
     }
 }

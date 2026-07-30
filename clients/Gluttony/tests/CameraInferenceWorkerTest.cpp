@@ -67,7 +67,9 @@ void CameraInferenceWorkerTest::
 
     QCOMPARE(failedSpy.count(), 1);
     QCOMPARE(
-        failedSpy.first().at(0).toULongLong(),
+        failedSpy.first().at(0)
+            .value<DecodedCameraFrame>()
+            .header.sequence,
         1001ULL);
     QVERIFY(
         failedSpy.first().at(1).toString()
@@ -141,7 +143,9 @@ void CameraInferenceWorkerTest::
         1,
         2000);
     QCOMPARE(
-        failedSpy.first().at(0).toULongLong(),
+        failedSpy.first().at(0)
+            .value<DecodedCameraFrame>()
+            .header.sequence,
         2002ULL);
 
     workerThread.quit();

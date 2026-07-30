@@ -28,7 +28,9 @@ signals:
 
     void sigFrameFinished(const DecodedCameraFrame& frame, const InferenceResult& result);
 
-    void sigFrameFailed(quint64 sequence, const QString& errorMessage);
+    void sigFrameFailed(
+        const DecodedCameraFrame& frame,
+        const QString& errorMessage);
 
 private:
     QString modelPath_;

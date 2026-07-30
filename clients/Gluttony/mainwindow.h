@@ -85,8 +85,17 @@ private slots:
     void onSavedRunDeleted(const QString& runId);
     void onRunInterrupted(const QString& runId);
     void onCameraFrameReady(const DecodedCameraFrame& frame);
-
+    void onCameraRunCreated(const InspectionRunRecord& run);
     void onCameraInferenceFinished(const DecodedCameraFrame& frame, const InferenceResult& result);
+    void onCameraInferenceFailed(
+        const DecodedCameraFrame& frame,
+        const QString& errorMessage);
+    void onCameraSuccessPersisted(
+        const PersistedInspectionResult& result,
+        quint64 transportSequence);
+    void onCameraFailurePersisted(
+        const InspectionItemPageRow& item,
+        quint64 transportSequence);
 
 private:
     void setupUI();
@@ -100,6 +109,14 @@ private:
         quint64 sequence,
         const QString& errorCode,
         const QString& message);
+    void beginCameraPersistenceSession();
+    void requestFinishCameraPersistenceSession();
+    void tryFinalizeCameraPersistenceSession();
+    void resetCameraPersistenceSession();
+    void finalizeCameraPersistenceSessionBlocking();
+    [[nodiscard]]
+    CameraPersistenceFrame cameraPersistenceFrame(
+        const DecodedCameraFrame& frame) const;
 
     void beginNewRun(const QString& sourceType, const QString& sourcePath);
     void startInferenceWorker(const QString& modelPath,const InferenceOptions& options);
@@ -190,6 +207,17 @@ private:
     bool finishInFlight = false;
     bool cameraTcpEnabled = false;
     bool cameraClientConnected = false;
+    QString cameraPeerAddress;
+    quint16 cameraPeerPort = 0;
+    QString cameraRunPeerAddress;
+    quint16 cameraRunPeerPort = 0;
+    QString cameraRunId;
+    bool cameraRunReady = false;
+    bool cameraSessionClosing = false;
+    bool cameraFinalizeInFlight = false;
+    qint64 cameraReceivedCount = 0;
+    qint64 cameraDroppedCount = 0;
+    qint64 cameraPersistenceInFlight = 0;
     bool closing = false;
     bool closeAfterSave = false;
 

@@ -18,6 +18,8 @@
 #include <QUuid>
 #include <QVBoxLayout>
 
+#include <limits>
+
 namespace MainWindowUtils
 {
 
@@ -107,6 +109,8 @@ MainWindow::~MainWindow()
     {
         cameraInferenceController->stop();
     }
+
+    finalizeCameraPersistenceSessionBlocking();
 
     stopInferenceWorker();
 
@@ -286,6 +290,9 @@ bool MainWindow::isCameraFrameProcessingAllowed() const
 {
     return cameraTcpEnabled
         && cameraClientConnected
+        && persistenceReady
+        && cameraRunReady
+        && !cameraSessionClosing
         && !closing
         && detectionStatus == DetectionStatus::IDLE
         && activeRunStatus != QStringLiteral("DRAFT");
@@ -310,35 +317,17 @@ void MainWindow::initializeCameraInferenceController()
 
     connect(cameraInferenceController,&CameraInferenceController::sigFrameFinished,this, &MainWindow::onCameraInferenceFinished);
 
-    connect(cameraInferenceController,&CameraInferenceController::sigFrameFailed,this,[this](quint64 sequence, const QString& errorMessage){
-        if(cameraFrameSource != nullptr && cameraFrameSource->hasClient())
-        {
-            InferenceResponseCodec::InferenceErrorPayload payload;
-            payload.errorCode = QStringLiteral("INFERENCE_FAILED");
-
-            payload.message = errorMessage.trimmed();
-            if(payload.message.isEmpty())
-            {
-                payload.message = QStringLiteral("Camera inference failed");
-            }
-            payload.message = payload.message.left(InferenceResponseCodec::MAX_ERROR_MESSAGE_LENGTH);
-
-            QString responseError;
-
-            if(!cameraFrameSource->sendInferenceError(sequence,payload,&responseError))
-            {
-                QWARNING(QStringLiteral("Failed to send inference error"" | Sequence=%1 | %2").arg(sequence).arg(responseError));
-            }
-        }
-        if(!isCameraFrameProcessingAllowed())
-        {
-            return;
-        }
-        statusBar->ui->readyLabel->setText(QStringLiteral("Camera frame %1 inference failed").arg(sequence));
-        QWARNING(QStringLiteral("Camera frame inference failed | Sequence=%1 | %2").arg(sequence).arg(errorMessage));
-    });
+    connect(
+        cameraInferenceController,
+        &CameraInferenceController::sigFrameFailed,
+        this,
+        &MainWindow::onCameraInferenceFailed);
 
     connect(cameraInferenceController,&CameraInferenceController::sigFrameDropped,this,[this](quint64 sequence, quint64 totalDroppedCount){
+        if (!cameraRunId.isEmpty())
+        {
+            ++cameraDroppedCount;
+        }
         bool responseSent = true;
         QString responseError;
         if(cameraFrameSource != nullptr && cameraFrameSource->hasClient())
@@ -361,8 +350,9 @@ void MainWindow::initializeCameraInferenceController()
         }
     });
 
-    connect(cameraInferenceController,&CameraInferenceController::sigStopped,this,[](){
+    connect(cameraInferenceController,&CameraInferenceController::sigStopped,this,[this](){
         QDEBUG(QStringLiteral("Camera inference controller stopped"));
+        tryFinalizeCameraPersistenceSession();
     });
 }
 
@@ -399,6 +389,7 @@ void MainWindow::initializeCameraFrameSource()
         this,
         [this]()
         {
+            requestFinishCameraPersistenceSession();
             cameraTcpEnabled = false;
             cameraClientConnected = false;
             setCameraTcpActionState(false);
@@ -425,6 +416,9 @@ void MainWindow::initializeCameraFrameSource()
             quint16 peerPort)
         {
             cameraClientConnected = true;
+            cameraPeerAddress = peerAddress;
+            cameraPeerPort = peerPort;
+            beginCameraPersistenceSession();
             updateActionStates();
 
             statusBar->ui->readyLabel->setText(
@@ -447,6 +441,7 @@ void MainWindow::initializeCameraFrameSource()
         [this]()
         {
             cameraClientConnected = false;
+            requestFinishCameraPersistenceSession();
             updateActionStates();
 
             if(cameraTcpEnabled)
@@ -592,6 +587,7 @@ void MainWindow::onCameraTcpActionToggled(
          * stop() 会中止当前客户端并关闭监听端口。
          * 先更新状态，确保断线回调显示 Disabled。
          */
+        requestFinishCameraPersistenceSession();
         cameraTcpEnabled = false;
         cameraClientConnected = false;
         cameraFrameSource->stop();
@@ -682,6 +678,254 @@ bool MainWindow::sendCameraInferenceError(
     return sent;
 }
 
+void MainWindow::beginCameraPersistenceSession()
+{
+    if (!persistenceReady
+        || persistenceWorker == nullptr
+        || !cameraTcpEnabled
+        || !cameraClientConnected
+        || cameraPeerAddress.trimmed().isEmpty()
+        || !cameraRunId.isEmpty()
+        || loadedModelPath.isEmpty())
+    {
+        return;
+    }
+
+    cameraRunId =
+        QUuid::createUuid().toString(QUuid::WithoutBraces);
+    cameraRunPeerAddress = cameraPeerAddress;
+    cameraRunPeerPort = cameraPeerPort;
+    cameraRunReady = false;
+    cameraSessionClosing = false;
+    cameraFinalizeInFlight = false;
+    cameraReceivedCount = 0;
+    cameraDroppedCount = 0;
+    cameraPersistenceInFlight = 0;
+
+    NewInspectionRun run;
+    run.runId = cameraRunId;
+    run.sourceType = QStringLiteral("TCP_CAMERA");
+    run.peerAddress =
+        QStringLiteral("%1:%2")
+            .arg(cameraRunPeerAddress)
+            .arg(cameraRunPeerPort);
+    run.sourcePath =
+        QStringLiteral("tcp://%1").arg(run.peerAddress);
+    run.storagePath =
+        QDir(managedRunsRoot).filePath(run.runId);
+    run.storageOrigin = QStringLiteral("MANAGED");
+    run.modelPath = loadedModelPath;
+    run.appVersion =
+        QCoreApplication::applicationVersion().isEmpty()
+            ? QStringLiteral("development")
+            : QCoreApplication::applicationVersion();
+    const InferenceOptions options =
+        paramWidget->inferenceOptions();
+    run.reviewThreshold = options.reviewThreshold;
+    run.ngThreshold = options.ngThreshold;
+    run.heatmapAlpha = options.heatmapAlpha;
+    run.startedAtMs = QDateTime::currentMSecsSinceEpoch();
+
+    DRWidget->model->clear();
+    resetStatusBar();
+    statusBar->ui->readyLabel->setText(
+        QStringLiteral("Preparing TCP camera persistence..."));
+
+    QMetaObject::invokeMethod(
+        persistenceWorker,
+        [worker = persistenceWorker, run]()
+        {
+            worker->createCameraRun(run);
+        },
+        Qt::QueuedConnection);
+}
+
+void MainWindow::onCameraRunCreated(
+    const InspectionRunRecord& run)
+{
+    if (run.runId != cameraRunId)
+    {
+        return;
+    }
+
+    cameraRunReady = true;
+    QDEBUG(
+        QStringLiteral(
+            "TCP camera persistence session created: %1")
+            .arg(run.runId));
+
+    if (cameraSessionClosing
+        || !cameraTcpEnabled
+        || !cameraClientConnected)
+    {
+        requestFinishCameraPersistenceSession();
+        return;
+    }
+
+    statusBar->ui->readyLabel->setText(
+        QStringLiteral("TCP camera persistence ready"));
+}
+
+CameraPersistenceFrame MainWindow::cameraPersistenceFrame(
+    const DecodedCameraFrame& frame) const
+{
+    CameraPersistenceFrame persistentFrame;
+    persistentFrame.runId = cameraRunId;
+    persistentFrame.transportSequence =
+        frame.header.sequence;
+    persistentFrame.capturedAtMs =
+        static_cast<qint64>(
+            qMin<quint64>(
+                frame.header.timestampMs,
+                static_cast<quint64>(
+                    std::numeric_limits<qint64>::max())));
+    persistentFrame.pixelFormat =
+        static_cast<int>(frame.header.pixelFormat);
+    persistentFrame.width = frame.header.width;
+    persistentFrame.height = frame.header.height;
+    persistentFrame.image = frame.image;
+    return persistentFrame;
+}
+
+void MainWindow::requestFinishCameraPersistenceSession()
+{
+    if (cameraRunId.isEmpty())
+    {
+        return;
+    }
+    cameraSessionClosing = true;
+    tryFinalizeCameraPersistenceSession();
+}
+
+void MainWindow::tryFinalizeCameraPersistenceSession()
+{
+    if (cameraRunId.isEmpty()
+        || !cameraRunReady
+        || !cameraSessionClosing
+        || cameraFinalizeInFlight
+        || cameraPersistenceInFlight > 0
+        || (cameraInferenceController != nullptr
+            && (cameraInferenceController->isBusy()
+                || cameraInferenceController->hasPendingFrame())))
+    {
+        return;
+    }
+
+    cameraFinalizeInFlight = true;
+    const QString runId = cameraRunId;
+    const QString peer = cameraRunPeerAddress;
+    const QString name =
+        QStringLiteral("TCP %1 %2")
+            .arg(
+                QDateTime::currentDateTime().toString(
+                    QStringLiteral("yyyy-MM-dd HH:mm:ss")),
+                peer)
+            .left(120);
+    const QString note =
+        QStringLiteral(
+            "Automatically saved TCP camera session. "
+            "Peer=%1:%2, Received=%3, Persisted=%4, Dropped=%5")
+            .arg(peer)
+            .arg(cameraRunPeerPort)
+            .arg(cameraReceivedCount)
+            .arg(completedImageCount)
+            .arg(cameraDroppedCount);
+
+    QMetaObject::invokeMethod(
+        persistenceWorker,
+        [worker = persistenceWorker,
+         runId,
+         name,
+         note,
+         receivedCount = cameraReceivedCount,
+         droppedCount = cameraDroppedCount]()
+        {
+            worker->finalizeCameraRun(
+                runId,
+                name,
+                note,
+                receivedCount,
+                droppedCount);
+        },
+        Qt::QueuedConnection);
+}
+
+void MainWindow::resetCameraPersistenceSession()
+{
+    cameraRunId.clear();
+    cameraRunPeerAddress.clear();
+    cameraRunPeerPort = 0;
+    cameraRunReady = false;
+    cameraSessionClosing = false;
+    cameraFinalizeInFlight = false;
+    cameraReceivedCount = 0;
+    cameraDroppedCount = 0;
+    cameraPersistenceInFlight = 0;
+}
+
+void MainWindow::finalizeCameraPersistenceSessionBlocking()
+{
+    if (cameraRunId.isEmpty()
+        || persistenceWorker == nullptr
+        || persistenceThread == nullptr
+        || !persistenceThread->isRunning())
+    {
+        return;
+    }
+
+    if (cameraFinalizeInFlight)
+    {
+        QMetaObject::invokeMethod(
+            persistenceWorker,
+            []() {},
+            Qt::BlockingQueuedConnection);
+        resetCameraPersistenceSession();
+        return;
+    }
+
+    const QString runId = cameraRunId;
+    const QString peer = cameraRunPeerAddress;
+    const QString name =
+        QStringLiteral("TCP %1 %2")
+            .arg(
+                QDateTime::currentDateTime().toString(
+                    QStringLiteral("yyyy-MM-dd HH:mm:ss")),
+                peer)
+            .left(120);
+    const QString note =
+        QStringLiteral(
+            "Automatically saved during shutdown. "
+            "Peer=%1:%2, Received=%3, Persisted=%4, Dropped=%5")
+            .arg(peer)
+            .arg(cameraRunPeerPort)
+            .arg(cameraReceivedCount)
+            .arg(completedImageCount)
+            .arg(qMax(
+                cameraDroppedCount,
+                cameraReceivedCount - completedImageCount));
+
+    QMetaObject::invokeMethod(
+        persistenceWorker,
+        [worker = persistenceWorker,
+         runId,
+         name,
+         note,
+         receivedCount = cameraReceivedCount,
+         droppedCount = qMax(
+             cameraDroppedCount,
+             cameraReceivedCount - completedImageCount)]()
+        {
+            worker->finalizeCameraRun(
+                runId,
+                name,
+                note,
+                receivedCount,
+                droppedCount);
+        },
+        Qt::BlockingQueuedConnection);
+    resetCameraPersistenceSession();
+}
+
 
 void MainWindow::initializePersistence()
 {
@@ -720,6 +964,11 @@ void MainWindow::initializePersistence()
         &MainWindow::onRunCreated);
     connect(
         persistenceWorker,
+        &PersistenceWorker::cameraRunCreated,
+        this,
+        &MainWindow::onCameraRunCreated);
+    connect(
+        persistenceWorker,
         &PersistenceWorker::itemClaimed,
         this,
         &MainWindow::onItemClaimed);
@@ -733,6 +982,56 @@ void MainWindow::initializePersistence()
         &PersistenceWorker::failurePersisted,
         this,
         &MainWindow::onFailurePersisted);
+    connect(
+        persistenceWorker,
+        &PersistenceWorker::cameraSuccessPersisted,
+        this,
+        &MainWindow::onCameraSuccessPersisted);
+    connect(
+        persistenceWorker,
+        &PersistenceWorker::cameraFailurePersisted,
+        this,
+        &MainWindow::onCameraFailurePersisted);
+    connect(
+        persistenceWorker,
+        &PersistenceWorker::cameraRunSaved,
+        this,
+        [this](const QString& runId)
+        {
+            if (runId != cameraRunId)
+            {
+                return;
+            }
+            QDEBUG(
+                QStringLiteral(
+                    "TCP camera batch saved automatically: %1")
+                    .arg(runId));
+            resetCameraPersistenceSession();
+            if (cameraTcpEnabled && cameraClientConnected)
+            {
+                beginCameraPersistenceSession();
+            }
+        });
+    connect(
+        persistenceWorker,
+        &PersistenceWorker::cameraRunDiscarded,
+        this,
+        [this](const QString& runId)
+        {
+            if (runId != cameraRunId)
+            {
+                return;
+            }
+            QDEBUG(
+                QStringLiteral(
+                    "Empty TCP camera batch discarded: %1")
+                    .arg(runId));
+            resetCameraPersistenceSession();
+            if (cameraTcpEnabled && cameraClientConnected)
+            {
+                beginCameraPersistenceSession();
+            }
+        });
     connect(
         persistenceWorker,
         &PersistenceWorker::runDrafted,
@@ -797,6 +1096,10 @@ void MainWindow::onPersistenceInitialized(
     else
     {
         QDEBUG(QStringLiteral("Persistence Worker Initialized."));
+        if (cameraTcpEnabled && cameraClientConnected)
+        {
+            beginCameraPersistenceSession();
+        }
     }
     updateActionStates();
 }
@@ -804,7 +1107,8 @@ void MainWindow::onPersistenceInitialized(
 void MainWindow::onModelSelected(const QString& modelPath)
 {
     if (detectionStatus != DetectionStatus::IDLE
-        || activeRunStatus == QStringLiteral("DRAFT"))
+        || activeRunStatus == QStringLiteral("DRAFT")
+        || !cameraRunId.isEmpty())
     {
         return;
     }
@@ -839,6 +1143,10 @@ void MainWindow::onModelSelected(const QString& modelPath)
         statusBar->ui->readyLabel->setText(QStringLiteral("Loading camera inference model..."));
 
         cameraInferenceController->start(loadedModelPath,paramWidget->inferenceOptions());
+    }
+    if (cameraTcpEnabled && cameraClientConnected)
+    {
+        beginCameraPersistenceSession();
     }
     updateActionStates();
 }
@@ -1945,6 +2253,8 @@ void MainWindow::onCameraFrameReady(const DecodedCameraFrame& frame)
         return;
     }
 
+    ++cameraReceivedCount;
+
     if(cameraInferenceController == nullptr
         || !inferenceEngine.isLoaded()
         || loadedModelPath.isEmpty()
@@ -1990,7 +2300,40 @@ void MainWindow::onPersistenceOperationFailed(
             "Persistence Operation Failed | Operation=%1 | Context=%2 | %3")
             .arg(operation, contextId, errorMessage));
 
-    if (operation == QStringLiteral("create_run"))
+    if (operation == QStringLiteral("create_camera_run")
+        || operation == QStringLiteral("read_camera_run"))
+    {
+        sendCameraInferenceError(
+            0,
+            QStringLiteral("PERSISTENCE_NOT_READY"),
+            errorMessage);
+        resetCameraPersistenceSession();
+    }
+    else if (operation == QStringLiteral("persist_camera_success")
+             || operation == QStringLiteral("persist_camera_failure"))
+    {
+        cameraPersistenceInFlight =
+            qMax<qint64>(0, cameraPersistenceInFlight - 1);
+        bool sequenceValid = false;
+        const quint64 sequence =
+            contextId.toULongLong(&sequenceValid);
+        if (sequenceValid
+            && !cameraSessionClosing
+            && cameraClientConnected)
+        {
+            sendCameraInferenceError(
+                sequence,
+                QStringLiteral("PERSISTENCE_FAILED"),
+                errorMessage);
+        }
+        tryFinalizeCameraPersistenceSession();
+    }
+    else if (operation == QStringLiteral("finalize_camera_run"))
+    {
+        cameraFinalizeInFlight = false;
+        resetCameraPersistenceSession();
+    }
+    else if (operation == QStringLiteral("create_run"))
     {
         clearActiveRun();
         detectionStatus = DetectionStatus::IDLE;
@@ -2305,39 +2648,185 @@ void MainWindow::discardActiveDraftBlocking()
 
 void MainWindow::onCameraInferenceFinished(const DecodedCameraFrame& frame, const InferenceResult& result)
 {
-    if(cameraFrameSource && cameraFrameSource->hasClient())
+    if (cameraRunId.isEmpty()
+        || !cameraRunReady
+        || persistenceWorker == nullptr)
+    {
+        sendCameraInferenceError(
+            frame.header.sequence,
+            QStringLiteral("PERSISTENCE_NOT_READY"),
+            QStringLiteral(
+                "TCP camera persistence session is not ready"));
+        return;
+    }
+
+    ++cameraPersistenceInFlight;
+    const CameraPersistenceFrame persistentFrame =
+        cameraPersistenceFrame(frame);
+    QMetaObject::invokeMethod(
+        persistenceWorker,
+        [worker = persistenceWorker,
+         persistentFrame,
+         result]()
+        {
+            worker->persistCameraSuccess(
+                persistentFrame,
+                result);
+        },
+        Qt::QueuedConnection);
+    statusBar->ui->readyLabel->setText(
+        QStringLiteral(
+            "Persisting camera frame %1...")
+            .arg(frame.header.sequence));
+}
+
+void MainWindow::onCameraInferenceFailed(
+    const DecodedCameraFrame& frame,
+    const QString& errorMessage)
+{
+    if (cameraRunId.isEmpty()
+        || !cameraRunReady
+        || persistenceWorker == nullptr
+        || frame.image.isNull())
+    {
+        sendCameraInferenceError(
+            frame.header.sequence,
+            QStringLiteral("INFERENCE_FAILED"),
+            errorMessage.isEmpty()
+                ? QStringLiteral("Camera inference failed")
+                : errorMessage);
+        return;
+    }
+
+    ++cameraPersistenceInFlight;
+    const CameraPersistenceFrame persistentFrame =
+        cameraPersistenceFrame(frame);
+    QMetaObject::invokeMethod(
+        persistenceWorker,
+        [worker = persistenceWorker,
+         persistentFrame,
+         errorMessage]()
+        {
+            worker->persistCameraFailure(
+                persistentFrame,
+                errorMessage);
+        },
+        Qt::QueuedConnection);
+
+    statusBar->ui->readyLabel->setText(
+        QStringLiteral(
+            "Persisting failed camera frame %1...")
+            .arg(frame.header.sequence));
+}
+
+void MainWindow::onCameraSuccessPersisted(
+    const PersistedInspectionResult& result,
+    quint64 transportSequence)
+{
+    if (result.runId != cameraRunId)
+    {
+        return;
+    }
+
+    cameraPersistenceInFlight =
+        qMax<qint64>(0, cameraPersistenceInFlight - 1);
+    ++completedImageCount;
+    totalScore += result.score;
+
+    const DetectionLevel level =
+        MainWindowUtils::detectionLevelFromText(
+            result.detectionLevel);
+    if (level == DetectionLevel::NG)
+    {
+        ++ngImageCount;
+    }
+    else if (level == DetectionLevel::REVIEW)
+    {
+        ++reviewImageCount;
+    }
+    else
+    {
+        ++okImageCount;
+    }
+
+    const DetectionRecord record =
+        recordFromPersisted(result);
+    DRWidget->model->appendResult(record);
+    displayRecord(record);
+    refreshStatusBar(
+        QStringLiteral(
+            "TCP frame %1 persisted")
+            .arg(transportSequence));
+
+    if (!cameraSessionClosing
+        && cameraClientConnected
+        && cameraFrameSource != nullptr
+        && cameraFrameSource->hasClient())
     {
         InferenceResponseCodec::InferenceResultPayload payload;
-        payload.detectionLevel = MainWindowUtils::detectionLevelToText(result.detectionLevel);
-        payload.score = static_cast<double>(result.score);
+        payload.detectionLevel = result.detectionLevel;
+        payload.score = result.score;
         payload.inferenceMs = result.inferenceMs;
         payload.defectArea = result.defectArea;
 
         QString responseError;
-        if(!cameraFrameSource->sendInferenceResult(frame.header.sequence,payload,&responseError))
+        if (!cameraFrameSource->sendInferenceResult(
+                transportSequence,
+                payload,
+                &responseError))
         {
-            QWARNING(QStringLiteral("Failed to send inference result | Sequence=%1 | %2").arg(frame.header.sequence).arg(responseError));
+            QWARNING(
+                QStringLiteral(
+                    "Failed to send persisted inference result "
+                    "| Sequence=%1 | %2")
+                    .arg(transportSequence)
+                    .arg(responseError));
         }
     }
 
-    if(!isCameraFrameProcessingAllowed())
+    tryFinalizeCameraPersistenceSession();
+}
+
+void MainWindow::onCameraFailurePersisted(
+    const InspectionItemPageRow& item,
+    quint64 transportSequence)
+{
+    if (cameraRunId.isEmpty())
     {
         return;
     }
-    viewWidget->ui->originalGV->setImage(frame.image);
-    viewWidget->setOriginalImagePath(QStringLiteral("Camera_Frame_%1.jpg").arg(frame.header.sequence));
 
-    if(result.heatmapOverlay.isNull())
-    {
-        viewWidget->ui->resultGV->clearImageInfo();
-        QWARNING(QStringLiteral("Camera inference heatmap is empty | Sequence=%1").arg(frame.header.sequence));
-    }
-    else
-    {
-        viewWidget->ui->resultGV->setImage(result.heatmapOverlay);
-    }
-    quickResWidget->ui->setNG(result.detectionLevel,result.score);
-    quickResWidget->ui->setMetrics(result.inferenceMs,result.defectArea);
+    cameraPersistenceInFlight =
+        qMax<qint64>(0, cameraPersistenceInFlight - 1);
+    ++completedImageCount;
+    ++failedImageCount;
 
-    statusBar->ui->readyLabel->setText(QStringLiteral("Camera frame %1 inferred in %2 ms").arg(frame.header.sequence).arg(result.inferenceMs));
+    DetectionRecord record;
+    record.runId = cameraRunId;
+    record.resultId = item.resultId;
+    record.sequenceNo = item.sequenceNo;
+    record.fileName =
+        MainWindowUtils::displayFileName(
+            item.sourceFilePath);
+    record.sourceFileName = item.sourceFilePath;
+    record.status = QStringLiteral("FAILED");
+    record.hasDetectionResult = false;
+    record.errorMessage =
+        item.errorMessage.value_or(
+            QStringLiteral("Camera inference failed"));
+    DRWidget->model->appendResult(record);
+
+    refreshStatusBar(
+        QStringLiteral(
+            "TCP frame %1 failure persisted")
+            .arg(transportSequence));
+
+    if (!cameraSessionClosing && cameraClientConnected)
+    {
+        sendCameraInferenceError(
+            transportSequence,
+            QStringLiteral("INFERENCE_FAILED"),
+            record.errorMessage);
+    }
+    tryFinalizeCameraPersistenceSession();
 }

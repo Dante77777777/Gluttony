@@ -39,7 +39,9 @@ signals:
     void sigReady();
     void sigInitializationFailed(const QString& errorMessage);
     void sigFrameFinished(const DecodedCameraFrame& frame, const InferenceResult& result);
-    void sigFrameFailed(quint64 sequence, const QString& errorMessage);
+    void sigFrameFailed(
+        const DecodedCameraFrame& frame,
+        const QString& errorMessage);
     void sigFrameDropped(quint64 sequence, quint64 totalDroppedCount);
     void sigStopped();
 
