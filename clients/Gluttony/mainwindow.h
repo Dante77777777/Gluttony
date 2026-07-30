@@ -109,6 +109,12 @@ private:
         quint64 sequence,
         const QString& errorCode,
         const QString& message);
+    void onCameraStreamStarted(
+        quint64 streamSequence,
+        quint64 timestampMs);
+    void onCameraStreamStopped(
+        quint64 streamSequence,
+        quint64 timestampMs);
     void beginCameraPersistenceSession();
     void requestFinishCameraPersistenceSession();
     void tryFinalizeCameraPersistenceSession();
@@ -207,6 +213,12 @@ private:
     bool finishInFlight = false;
     bool cameraTcpEnabled = false;
     bool cameraClientConnected = false;
+    bool cameraStreamActive = false;
+    quint64 cameraStreamSequence = 0;
+    quint64 cameraRunStreamSequence = 0;
+    bool cameraStopRequestInFlight = false;
+    quint64 nextCameraControlSequence = 1;
+    quint64 cameraStopRequestSequence = 0;
     QString cameraPeerAddress;
     quint16 cameraPeerPort = 0;
     QString cameraRunPeerAddress;

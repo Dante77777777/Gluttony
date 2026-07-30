@@ -290,8 +290,11 @@ bool MainWindow::isCameraFrameProcessingAllowed() const
 {
     return cameraTcpEnabled
         && cameraClientConnected
+        && cameraStreamActive
         && persistenceReady
         && cameraRunReady
+        && cameraRunStreamSequence
+               == cameraStreamSequence
         && !cameraSessionClosing
         && !closing
         && detectionStatus == DetectionStatus::IDLE
@@ -389,6 +392,10 @@ void MainWindow::initializeCameraFrameSource()
         this,
         [this]()
         {
+            cameraStreamActive = false;
+            cameraStreamSequence = 0;
+            cameraStopRequestInFlight = false;
+            cameraStopRequestSequence = 0;
             requestFinishCameraPersistenceSession();
             cameraTcpEnabled = false;
             cameraClientConnected = false;
@@ -418,12 +425,15 @@ void MainWindow::initializeCameraFrameSource()
             cameraClientConnected = true;
             cameraPeerAddress = peerAddress;
             cameraPeerPort = peerPort;
-            beginCameraPersistenceSession();
+            cameraStreamActive = false;
+            cameraStreamSequence = 0;
+            cameraStopRequestInFlight = false;
+            cameraStopRequestSequence = 0;
             updateActionStates();
 
             statusBar->ui->readyLabel->setText(
                 QStringLiteral(
-                    "Camera connected: %1:%2")
+                    "Camera connected, waiting for stream: %1:%2")
                     .arg(peerAddress)
                     .arg(peerPort));
 
@@ -441,6 +451,10 @@ void MainWindow::initializeCameraFrameSource()
         [this]()
         {
             cameraClientConnected = false;
+            cameraStreamActive = false;
+            cameraStreamSequence = 0;
+            cameraStopRequestInFlight = false;
+            cameraStopRequestSequence = 0;
             requestFinishCameraPersistenceSession();
             updateActionStates();
 
@@ -482,6 +496,18 @@ void MainWindow::initializeCameraFrameSource()
         &CameraFrameSource::sigFrameReady,
         this,
         &MainWindow::onCameraFrameReady);
+
+    connect(
+        cameraFrameSource,
+        &CameraFrameSource::sigStreamStarted,
+        this,
+        &MainWindow::onCameraStreamStarted);
+
+    connect(
+        cameraFrameSource,
+        &CameraFrameSource::sigStreamStopped,
+        this,
+        &MainWindow::onCameraStreamStopped);
 
     connect(
         cameraFrameSource,
@@ -545,6 +571,7 @@ void MainWindow::initializeCameraFrameSource()
 
     cameraTcpEnabled = false;
     cameraClientConnected = false;
+    cameraStreamActive = false;
     setCameraTcpActionState(false);
 }
 
@@ -587,6 +614,10 @@ void MainWindow::onCameraTcpActionToggled(
          * stop() 会中止当前客户端并关闭监听端口。
          * 先更新状态，确保断线回调显示 Disabled。
          */
+        cameraStreamActive = false;
+        cameraStreamSequence = 0;
+        cameraStopRequestInFlight = false;
+        cameraStopRequestSequence = 0;
         requestFinishCameraPersistenceSession();
         cameraTcpEnabled = false;
         cameraClientConnected = false;
@@ -678,12 +709,95 @@ bool MainWindow::sendCameraInferenceError(
     return sent;
 }
 
+void MainWindow::onCameraStreamStarted(
+    quint64 streamSequence,
+    quint64 timestampMs)
+{
+    Q_UNUSED(timestampMs);
+
+    if(!cameraTcpEnabled || !cameraClientConnected)
+    {
+        return;
+    }
+
+    if(cameraStreamActive
+        && cameraStreamSequence == streamSequence)
+    {
+        return;
+    }
+
+    const bool previousRunMustFinish =
+        !cameraRunId.isEmpty()
+        && cameraRunStreamSequence != streamSequence;
+
+    cameraStreamActive = true;
+    cameraStreamSequence = streamSequence;
+    cameraStopRequestInFlight = false;
+    cameraStopRequestSequence = 0;
+
+    if(previousRunMustFinish)
+    {
+        requestFinishCameraPersistenceSession();
+    }
+    else
+    {
+        beginCameraPersistenceSession();
+    }
+
+    statusBar->ui->readyLabel->setText(
+        QStringLiteral("TCP camera stream %1 started")
+            .arg(streamSequence));
+    updateActionStates();
+    QDEBUG(
+        QStringLiteral(
+            "Camera stream started | Stream=%1")
+            .arg(streamSequence));
+}
+
+void MainWindow::onCameraStreamStopped(
+    quint64 streamSequence,
+    quint64 timestampMs)
+{
+    Q_UNUSED(timestampMs);
+
+    if(cameraStreamSequence != streamSequence)
+    {
+        QWARNING(
+            QStringLiteral(
+                "Ignoring stale camera stream stop"
+                " | Current=%1 | Received=%2")
+                .arg(cameraStreamSequence)
+                .arg(streamSequence));
+        return;
+    }
+
+    cameraStreamActive = false;
+    cameraStopRequestInFlight = false;
+    cameraStopRequestSequence = 0;
+    const bool hasBatchToFinish =
+        !cameraRunId.isEmpty();
+    requestFinishCameraPersistenceSession();
+    updateActionStates();
+
+    statusBar->ui->readyLabel->setText(
+        hasBatchToFinish
+            ? QStringLiteral(
+                  "TCP stream stopped; saving current batch...")
+            : QStringLiteral("TCP stream stopped"));
+    QDEBUG(
+        QStringLiteral(
+            "Camera stream stopped | Stream=%1")
+            .arg(streamSequence));
+}
+
 void MainWindow::beginCameraPersistenceSession()
 {
     if (!persistenceReady
         || persistenceWorker == nullptr
         || !cameraTcpEnabled
         || !cameraClientConnected
+        || !cameraStreamActive
+        || cameraStreamSequence == 0
         || cameraPeerAddress.trimmed().isEmpty()
         || !cameraRunId.isEmpty()
         || loadedModelPath.isEmpty())
@@ -695,6 +809,7 @@ void MainWindow::beginCameraPersistenceSession()
         QUuid::createUuid().toString(QUuid::WithoutBraces);
     cameraRunPeerAddress = cameraPeerAddress;
     cameraRunPeerPort = cameraPeerPort;
+    cameraRunStreamSequence = cameraStreamSequence;
     cameraRunReady = false;
     cameraSessionClosing = false;
     cameraFinalizeInFlight = false;
@@ -710,7 +825,9 @@ void MainWindow::beginCameraPersistenceSession()
             .arg(cameraRunPeerAddress)
             .arg(cameraRunPeerPort);
     run.sourcePath =
-        QStringLiteral("tcp://%1").arg(run.peerAddress);
+        QStringLiteral("tcp://%1/stream/%2")
+            .arg(run.peerAddress)
+            .arg(cameraRunStreamSequence);
     run.storagePath =
         QDir(managedRunsRoot).filePath(run.runId);
     run.storageOrigin = QStringLiteral("MANAGED");
@@ -756,7 +873,10 @@ void MainWindow::onCameraRunCreated(
 
     if (cameraSessionClosing
         || !cameraTcpEnabled
-        || !cameraClientConnected)
+        || !cameraClientConnected
+        || !cameraStreamActive
+        || cameraRunStreamSequence
+               != cameraStreamSequence)
     {
         requestFinishCameraPersistenceSession();
         return;
@@ -855,6 +975,7 @@ void MainWindow::resetCameraPersistenceSession()
     cameraRunId.clear();
     cameraRunPeerAddress.clear();
     cameraRunPeerPort = 0;
+    cameraRunStreamSequence = 0;
     cameraRunReady = false;
     cameraSessionClosing = false;
     cameraFinalizeInFlight = false;
@@ -1007,7 +1128,9 @@ void MainWindow::initializePersistence()
                     "TCP camera batch saved automatically: %1")
                     .arg(runId));
             resetCameraPersistenceSession();
-            if (cameraTcpEnabled && cameraClientConnected)
+            if (cameraTcpEnabled
+                && cameraClientConnected
+                && cameraStreamActive)
             {
                 beginCameraPersistenceSession();
             }
@@ -1027,7 +1150,9 @@ void MainWindow::initializePersistence()
                     "Empty TCP camera batch discarded: %1")
                     .arg(runId));
             resetCameraPersistenceSession();
-            if (cameraTcpEnabled && cameraClientConnected)
+            if (cameraTcpEnabled
+                && cameraClientConnected
+                && cameraStreamActive)
             {
                 beginCameraPersistenceSession();
             }
@@ -1096,7 +1221,9 @@ void MainWindow::onPersistenceInitialized(
     else
     {
         QDEBUG(QStringLiteral("Persistence Worker Initialized."));
-        if (cameraTcpEnabled && cameraClientConnected)
+        if (cameraTcpEnabled
+            && cameraClientConnected
+            && cameraStreamActive)
         {
             beginCameraPersistenceSession();
         }
@@ -1144,7 +1271,9 @@ void MainWindow::onModelSelected(const QString& modelPath)
 
         cameraInferenceController->start(loadedModelPath,paramWidget->inferenceOptions());
     }
-    if (cameraTcpEnabled && cameraClientConnected)
+    if (cameraTcpEnabled
+        && cameraClientConnected
+        && cameraStreamActive)
     {
         beginCameraPersistenceSession();
     }
@@ -1592,6 +1721,71 @@ void MainWindow::continueAfterPersistedItem()
 
 void MainWindow::onStopActionTriggered()
 {
+    if(cameraTcpEnabled)
+    {
+        if(cameraFrameSource == nullptr
+            || !cameraClientConnected
+            || !cameraStreamActive
+            || cameraStopRequestInFlight)
+        {
+            return;
+        }
+
+        quint64 requestSequence =
+            nextCameraControlSequence++;
+        if(requestSequence == 0)
+        {
+            requestSequence =
+                nextCameraControlSequence++;
+        }
+
+        QString errorMessage;
+        if(!cameraFrameSource->
+               sendStopAcquisitionRequest(
+                   requestSequence,
+                   &errorMessage))
+        {
+            statusBar->ui->readyLabel->setText(
+                QStringLiteral(
+                    "Failed to request remote camera stop"));
+            QWARNING(
+                QStringLiteral(
+                    "Stop acquisition request failed"
+                    " | Request=%1 | %2")
+                    .arg(requestSequence)
+                    .arg(errorMessage));
+            return;
+        }
+
+        cameraStopRequestInFlight = true;
+        cameraStopRequestSequence = requestSequence;
+        statusBar->ui->readyLabel->setText(
+            QStringLiteral(
+                "Waiting for Lust to stop acquisition..."));
+        updateActionStates();
+
+        QTimer::singleShot(
+            5000,
+            this,
+            [this, requestSequence]()
+            {
+                if(!cameraStopRequestInFlight
+                    || cameraStopRequestSequence
+                           != requestSequence)
+                {
+                    return;
+                }
+
+                cameraStopRequestInFlight = false;
+                cameraStopRequestSequence = 0;
+                statusBar->ui->readyLabel->setText(
+                    QStringLiteral(
+                        "Remote camera stop timed out"));
+                updateActionStates();
+            });
+        return;
+    }
+
     if (detectionStatus != DetectionStatus::RUNNING)
     {
         return;
@@ -2512,7 +2706,11 @@ void MainWindow::updateActionStates()
     topToolBar->ui->startAction->setEnabled(
         detectionStatus == DetectionStatus::PAUSED || canStartNew);
     topToolBar->ui->stopAction->setEnabled(
-        detectionStatus == DetectionStatus::RUNNING);
+        detectionStatus == DetectionStatus::RUNNING
+        || (cameraTcpEnabled
+            && cameraClientConnected
+            && cameraStreamActive
+            && !cameraStopRequestInFlight));
     topToolBar->ui->saveBatchAction->setEnabled(
         activeRunStatus == QStringLiteral("DRAFT"));
     topToolBar->ui->discardBatchAction->setEnabled(
