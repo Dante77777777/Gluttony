@@ -316,6 +316,8 @@ if(BUILD_TESTING)
         Transport/TcpImageServer.cpp
         Transport/FrameProtocol.h
         Transport/FrameProtocol.cpp
+        Transport/InferenceResponseCodec.h
+        Transport/InferenceResponseCodec.cpp
         Transport/FrameStreamDecoder.h
         Transport/FrameStreamDecoder.cpp
         Transport/CameraStreamReceiver.h

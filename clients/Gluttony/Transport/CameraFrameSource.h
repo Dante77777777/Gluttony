@@ -9,6 +9,7 @@
 
 #include "CameraStreamReceiver.h"
 #include "ReceivedFrameImageDecoder.h"
+#include "InferenceResponseCodec.h"
 
 
 class CameraFrameSource final : public QObject
@@ -26,6 +27,10 @@ public:
     quint16 listeningPort() const;
     bool hasClient() const;
     qsizetype bufferedBytes() const noexcept;
+
+    qint64 pendingWriteBytes() const;
+    bool sendInferenceResult(quint64 sequence, const InferenceResponseCodec::InferenceResultPayload& payload, QString* errorMessage = nullptr);
+    bool sendInferenceError(quint64 sequence, const InferenceResponseCodec::InferenceErrorPayload& payload, QString* errorMessage = nullptr);
 
 signals:
     void sigServerStarted(quint16 port);
@@ -49,6 +54,7 @@ signals:
     void sigBufferOverflow(qsizetype bufferedBytes);
 
 private:
+    bool sendResponsePacket(FrameProtocol::MessageType messageType, quint64 sequence, const QByteArray& payload, QString* errorMessage);
     void onPacketReceived(const ReceivedFramePacket& packet);
 
 private:

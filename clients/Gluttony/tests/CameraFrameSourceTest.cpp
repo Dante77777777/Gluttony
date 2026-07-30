@@ -16,6 +16,9 @@ private slots:
     void receivesFragmentedJpegOverTcp();
     void routesHeartbeatWithoutImageDecode();
     void reportsCorruptedJpeg();
+    void sendsInferenceResultPacket();
+    void sendsInferenceErrorPacket();
+    void rejectsInvalidResponsePayload();
 };
 
 namespace
@@ -83,6 +86,28 @@ void connectClient(
     QTRY_VERIFY_WITH_TIMEOUT(
         source.hasClient(),
         2000);
+}
+
+bool peekCompletePacket(
+    QTcpSocket& client,
+    FrameProtocol::FrameHeader* header,
+    QByteArray* payload)
+{
+    if(header == nullptr || payload == nullptr)
+    {
+        return false;
+    }
+
+    QByteArray receiveBuffer =
+        client.peek(client.bytesAvailable());
+    QString errorMessage;
+
+    return FrameProtocol::tryDecodePacket(
+        receiveBuffer,
+        *header,
+        *payload,
+        &errorMessage)
+        == FrameProtocol::DecodeResult::Complete;
 }
 
 }
@@ -237,6 +262,148 @@ void CameraFrameSourceTest::reportsCorruptedJpeg()
             .isEmpty());
     QCOMPARE(frameSpy.count(), 0);
 }
+
+
+void CameraFrameSourceTest::sendsInferenceResultPacket()
+{
+    CameraFrameSource source;
+    QVERIFY(source.start(
+        QHostAddress::LocalHost,
+        0));
+
+    QTcpSocket client;
+    connectClient(source, client);
+
+    InferenceResponseCodec::InferenceResultPayload
+        expected;
+    expected.detectionLevel = QStringLiteral("NG");
+    expected.score = 0.873;
+    expected.inferenceMs = 18;
+    expected.defectArea = 126;
+
+    QString errorMessage;
+    QVERIFY2(
+        source.sendInferenceResult(
+            1001,
+            expected,
+            &errorMessage),
+        qPrintable(errorMessage));
+
+    FrameProtocol::FrameHeader header;
+    QByteArray jsonBytes;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        peekCompletePacket(
+            client,
+            &header,
+            &jsonBytes),
+        2000);
+
+    QCOMPARE(
+        header.messageType,
+        FrameProtocol::MessageType::InferenceResult);
+    QCOMPARE(
+        header.pixelFormat,
+        FrameProtocol::PixelFormat::Unknown);
+    QCOMPARE(header.sequence, 1001ULL);
+    QVERIFY(header.timestampMs > 0);
+    QCOMPARE(header.width, 0U);
+    QCOMPARE(header.height, 0U);
+
+    InferenceResponseCodec::InferenceResultPayload
+        actual;
+    QVERIFY2(
+        InferenceResponseCodec::decodeResult(
+            jsonBytes,
+            &actual,
+            &errorMessage),
+        qPrintable(errorMessage));
+    QCOMPARE(
+        actual.detectionLevel,
+        expected.detectionLevel);
+    QCOMPARE(actual.score, expected.score);
+    QCOMPARE(actual.inferenceMs, expected.inferenceMs);
+    QCOMPARE(actual.defectArea, expected.defectArea);
+}
+
+
+void CameraFrameSourceTest::sendsInferenceErrorPacket()
+{
+    CameraFrameSource source;
+    QVERIFY(source.start(
+        QHostAddress::LocalHost,
+        0));
+
+    QTcpSocket client;
+    connectClient(source, client);
+
+    InferenceResponseCodec::InferenceErrorPayload
+        expected;
+    expected.errorCode =
+        QStringLiteral("FRAME_DROPPED");
+    expected.message =
+        QStringLiteral("Replaced by a newer frame");
+
+    QString errorMessage;
+    QVERIFY2(
+        source.sendInferenceError(
+            1002,
+            expected,
+            &errorMessage),
+        qPrintable(errorMessage));
+
+    FrameProtocol::FrameHeader header;
+    QByteArray jsonBytes;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        peekCompletePacket(
+            client,
+            &header,
+            &jsonBytes),
+        2000);
+
+    QCOMPARE(
+        header.messageType,
+        FrameProtocol::MessageType::InferenceError);
+    QCOMPARE(header.sequence, 1002ULL);
+
+    InferenceResponseCodec::InferenceErrorPayload actual;
+    QVERIFY2(
+        InferenceResponseCodec::decodeError(
+            jsonBytes,
+            &actual,
+            &errorMessage),
+        qPrintable(errorMessage));
+    QCOMPARE(actual.errorCode, expected.errorCode);
+    QCOMPARE(actual.message, expected.message);
+}
+
+
+void CameraFrameSourceTest::
+    rejectsInvalidResponsePayload()
+{
+    CameraFrameSource source;
+    QVERIFY(source.start(
+        QHostAddress::LocalHost,
+        0));
+
+    QTcpSocket client;
+    connectClient(source, client);
+
+    InferenceResponseCodec::InferenceResultPayload
+        invalidPayload;
+    invalidPayload.detectionLevel =
+        QStringLiteral("UNKNOWN");
+
+    QString errorMessage;
+    QVERIFY(
+        !source.sendInferenceResult(
+            1003,
+            invalidPayload,
+            &errorMessage));
+    QVERIFY(!errorMessage.isEmpty());
+    QCOMPARE(client.bytesAvailable(), 0);
+    QCOMPARE(source.pendingWriteBytes(), 0);
+}
+
 
 QTEST_GUILESS_MAIN(CameraFrameSourceTest)
 
