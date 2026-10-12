@@ -1,14 +1,18 @@
 # Gluttony
 
-工业异常检测训练端项目，面向“Python 模型训练 + C++/Qt 客户端部署”的机器视觉作品集。
+工业视觉异常检测项目，覆盖 Python 模型训练与评估、C++/Qt 客户端推理、TCP 相机数据接入和 SQLite 检测记录管理。
 
 当前版本使用 **Anomalib + PatchCore + MVTec AD**。PatchCore 不从零训练 CNN 参数，而是使用 ImageNet 预训练网络提取正常样本的 patch 特征，建立正常特征库；推理时通过最近邻距离生成异常分数和热力图。
+
+系统包含 Python 训练与验证工具，以及 Qt 检测客户端。客户端可以加载 OpenVINO IR 或 ONNX 模型，处理单张图片、文件夹和 TCP 相机图像流；SQLite 保存检测批次、检测结果与历史记录，热力图等图像文件保存在本地目录。
 
 ## 目录结构
 
 ```text
 configs/              # 默认训练配置
-docs/                 # 训练过程学习文档
+database/             # SQLite 数据库迁移
+docs/                 # 训练、持久化和系统设计文档
+clients/Gluttony/     # C++/Qt 检测客户端
 scripts/              # 命令行入口
 src/gluttony/         # Python 工程代码
 outputs/              # 训练、评估、预测、导出结果
@@ -121,6 +125,22 @@ Qt 客户端的 “Load Model” 文件选择器同时支持：
 
 ONNX 仍由现有的 OpenVINO Runtime 执行，因此客户端无需再链接 ONNX Runtime。
 
+## SQLite 持久化
+
+客户端使用 SQLite 保存检测批次、逐张检测结果、状态和相机流统计；原始图像与热力图等大文件存储在文件系统中。数据库结构通过版本化迁移维护，当前迁移包括基础检测记录和 TCP 相机数据源。
+
+运行 Python 标准库数据库约束测试：
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+迁移说明、Qt 客户端接入状态和 C++ 冒烟测试命令见 [database/README.md](database/README.md)。
+
+## Qt 客户端
+
+客户端源码位于 `clients/Gluttony/`，包含 OpenVINO 推理、图片与相机流处理、TCP 服务端及 SQLite 持久化工作器。C++ 构建配置位于 `clients/Gluttony/CMakeLists.txt`；数据库测试和迁移说明见 [database/README.md](database/README.md)。
+
 ## 学习路线
 
-训练过程解释见 [docs/training_process.md](docs/training_process.md)。
+训练过程解释见 [docs/training_process.md](docs/training_process.md)，持久化需求和表结构设计见 [docs/persistence_requirements.md](docs/persistence_requirements.md) 与 [docs/sqlite_schema_design.md](docs/sqlite_schema_design.md)。
